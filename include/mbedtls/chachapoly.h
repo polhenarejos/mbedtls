@@ -155,6 +155,7 @@ int mbedtls_chachapoly_starts(mbedtls_chachapoly_context *ctx,
                               const unsigned char nonce[12],
                               mbedtls_chachapoly_mode_t mode);
 
+#if !defined(MBEDTLS_CHACHAPOLY_ALT)
 /**
  * \brief           This function starts a XChaCha20-Poly1305 encryption or
  *                  decryption operation.
@@ -183,6 +184,7 @@ int mbedtls_chachapoly_starts(mbedtls_chachapoly_context *ctx,
 int mbedtls_xchachapoly_starts( mbedtls_chachapoly_context *ctx,
                                const unsigned char nonce[24],
                                mbedtls_chachapoly_mode_t mode );
+#endif /* !MBEDTLS_CHACHAPOLY_ALT */
 
 /**
  * \brief           This function feeds additional data to be authenticated
@@ -320,6 +322,7 @@ int mbedtls_chachapoly_encrypt_and_tag(mbedtls_chachapoly_context *ctx,
                                        unsigned char *output,
                                        unsigned char tag[16]);
 
+#if !defined(MBEDTLS_CHACHAPOLY_ALT)
 /**
  * \brief           This function performs a complete XChaCha20-Poly1305
  *                  authenticated encryption with the previously-set key.
@@ -357,6 +360,7 @@ int mbedtls_xchachapoly_encrypt_and_tag( mbedtls_chachapoly_context *ctx,
                                         const unsigned char *input,
                                         unsigned char *output,
                                         unsigned char tag[16] );
+#endif /* !MBEDTLS_CHACHAPOLY_ALT */
 
 /**
  * \brief           This function performs a complete ChaCha20-Poly1305
@@ -392,6 +396,7 @@ int mbedtls_chachapoly_auth_decrypt(mbedtls_chachapoly_context *ctx,
                                     const unsigned char *input,
                                     unsigned char *output);
 
+#if !defined(MBEDTLS_CHACHAPOLY_ALT)
 /**
  * \brief           This function performs a complete XChaCha20-Poly1305
  *                  authenticated decryption with the previously-set key.
@@ -425,6 +430,7 @@ int mbedtls_xchachapoly_auth_decrypt( mbedtls_chachapoly_context *ctx,
                                      const unsigned char tag[16],
                                      const unsigned char *input,
                                      unsigned char *output );
+#endif /* !MBEDTLS_CHACHAPOLY_ALT */
 
 #if defined(MBEDTLS_SELF_TEST)
 /**
