@@ -26,6 +26,10 @@
 #include "mbedtls/ecdsa.h"
 #endif
 
+#if defined(MBEDTLS_EDDSA_C)
+#include "mbedtls/eddsa.h"
+#endif
+
 #if defined(MBEDTLS_USE_PSA_CRYPTO)
 #include "psa_util_internal.h"
 #include "psa/crypto.h"
@@ -519,7 +523,8 @@ static int eckey_can_do(mbedtls_pk_type_t type)
 {
     return type == MBEDTLS_PK_ECKEY ||
            type == MBEDTLS_PK_ECKEY_DH ||
-           type == MBEDTLS_PK_ECDSA;
+           type == MBEDTLS_PK_ECDSA ||
+           type == MBEDTLS_PK_EDDSA;
 }
 
 static size_t eckey_get_bitlen(mbedtls_pk_context *pk)
@@ -818,6 +823,43 @@ static int ecdsa_sign_wrap(mbedtls_pk_context *pk, mbedtls_md_type_t md_alg,
 }
 #endif /* MBEDTLS_USE_PSA_CRYPTO */
 #endif /* MBEDTLS_PK_CAN_ECDSA_SIGN */
+
+#if defined(MBEDTLS_PK_CAN_EDDSA_VERIFY)
+static int eddsa_verify_wrap(mbedtls_pk_context *pk, mbedtls_md_type_t md_alg,
+                             const unsigned char *hash, size_t hash_len,
+                             const unsigned char *sig, size_t sig_len)
+{
+    int ret = MBEDTLS_ERR_ERROR_CORRUPTION_DETECTED;
+    ((void) md_alg);
+
+    ret = mbedtls_eddsa_read_signature((mbedtls_ecp_keypair *) pk->pk_ctx,
+                                       hash, hash_len, sig, sig_len,
+                                       MBEDTLS_EDDSA_PURE, NULL, 0);
+
+    if (ret == MBEDTLS_ERR_ECP_SIG_LEN_MISMATCH) {
+        return MBEDTLS_ERR_PK_SIG_LEN_MISMATCH;
+    }
+
+    return ret;
+}
+#endif /* MBEDTLS_PK_CAN_EDDSA_VERIFY */
+
+#if defined(MBEDTLS_PK_CAN_EDDSA_SIGN)
+static int eddsa_sign_wrap(mbedtls_pk_context *pk, mbedtls_md_type_t md_alg,
+                           const unsigned char *hash, size_t hash_len,
+                           unsigned char *sig, size_t sig_size, size_t *sig_len,
+                           int (*f_rng)(void *, unsigned char *, size_t), void *p_rng)
+{
+    ((void) md_alg);
+    printf("IEAS\n");
+    return mbedtls_eddsa_write_signature((mbedtls_ecp_keypair *)pk->pk_ctx,
+                                         hash, hash_len,
+                                         sig, sig_size, sig_len,
+                                         MBEDTLS_EDDSA_PURE, NULL, 0,
+                                         f_rng, p_rng);
+}
+
+#endif /* MBEDTLS_PK_CAN_EDDSA_SIGN */
 
 #if defined(MBEDTLS_ECDSA_C) && defined(MBEDTLS_ECP_RESTARTABLE)
 /* Forward declarations */
@@ -1269,6 +1311,47 @@ const mbedtls_pk_info_t mbedtls_ecdsa_info = {
     .debug_func = eckey_debug,        /* Compatible key structures */
 };
 #endif /* MBEDTLS_PK_CAN_ECDSA_SOME */
+
+#if defined(MBEDTLS_PK_CAN_EDDSA_SOME)
+static int eddsa_can_do(mbedtls_pk_type_t type)
+{
+    return type == MBEDTLS_PK_EDDSA;
+}
+
+const mbedtls_pk_info_t mbedtls_eddsa_info = {
+    .type = MBEDTLS_PK_EDDSA,
+    .name = "EdDSA",
+    .get_bitlen = eckey_get_bitlen,     /* Compatible key structures */
+    .can_do = eddsa_can_do,
+#if defined(MBEDTLS_PK_CAN_EDDSA_VERIFY)
+    .verify_func = eddsa_verify_wrap,   /* Compatible key structures */
+#else /* MBEDTLS_PK_CAN_EDDSA_VERIFY */
+    .verify_func = NULL,
+#endif /* MBEDTLS_PK_CAN_EDDSA_VERIFY */
+#if defined(MBEDTLS_PK_CAN_EDDSA_SIGN)
+    .sign_func = eddsa_sign_wrap,   /* Compatible key structures */
+#else /* MBEDTLS_PK_CAN_EDDSA_SIGN */
+    .sign_func = NULL,
+#endif /* MBEDTLS_PK_CAN_EDDSA_SIGN */
+#if defined(MBEDTLS_ECDSA_C) && defined(MBEDTLS_ECP_RESTARTABLE)
+    .verify_rs_func = NULL,
+    .sign_rs_func = NULL,
+    .rs_alloc_func = NULL,
+    .rs_free_func = NULL,
+#endif /* MBEDTLS_ECDSA_C && MBEDTLS_ECP_RESTARTABLE */
+    .decrypt_func = NULL,
+    .encrypt_func = NULL,
+    .check_pair_func = eckey_check_pair_wrap,   /* Compatible key structures */
+#if defined(MBEDTLS_PK_USE_PSA_EC_DATA)
+    .ctx_alloc_func = NULL,
+    .ctx_free_func = NULL,
+#else /* MBEDTLS_PK_USE_PSA_EC_DATA */
+    .ctx_alloc_func = eckey_alloc_wrap,   /* Compatible key structures */
+    .ctx_free_func = eckey_free_wrap,   /* Compatible key structures */
+#endif /* MBEDTLS_PK_USE_PSA_EC_DATA */
+    .debug_func = eckey_debug,        /* Compatible key structures */
+};
+#endif /* MBEDTLS_PK_CAN_EDDSA_SOME */
 #endif /* MBEDTLS_PK_HAVE_ECC_KEYS */
 
 #if defined(MBEDTLS_PK_RSA_ALT_SUPPORT)

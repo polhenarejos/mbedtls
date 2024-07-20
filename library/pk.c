@@ -128,6 +128,10 @@ const mbedtls_pk_info_t *mbedtls_pk_info_from_type(mbedtls_pk_type_t pk_type)
         case MBEDTLS_PK_ECDSA:
             return &mbedtls_ecdsa_info;
 #endif /* MBEDTLS_PK_CAN_ECDSA_SOME */
+#if defined(MBEDTLS_PK_CAN_EDDSA_SOME)
+        case MBEDTLS_PK_EDDSA:
+            return &mbedtls_eddsa_info;
+#endif /* MBEDTLS_PK_CAN_EDDSA_SOME */
         /* MBEDTLS_PK_RSA_ALT omitted on purpose */
         default:
             return NULL;
@@ -675,6 +679,7 @@ static int import_pair_into_psa(const mbedtls_pk_context *pk,
         case MBEDTLS_PK_ECKEY:
         case MBEDTLS_PK_ECKEY_DH:
         case MBEDTLS_PK_ECDSA:
+        case MBEDTLS_PK_EDDSA:
         {
             /* We need to check the curve family, otherwise the import could
              * succeed with nonsensical data.
@@ -1241,7 +1246,7 @@ int mbedtls_pk_sign_restartable(mbedtls_pk_context *ctx,
         return MBEDTLS_ERR_PK_BAD_INPUT_DATA;
     }
 
-    if (ctx->pk_info == NULL || pk_hashlen_helper(md_alg, &hash_len) != 0) {
+    if (md_alg != MBEDTLS_MD_NONE && (ctx->pk_info == NULL || pk_hashlen_helper(md_alg, &hash_len) != 0)) {
         return MBEDTLS_ERR_PK_BAD_INPUT_DATA;
     }
 

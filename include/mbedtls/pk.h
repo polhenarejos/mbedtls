@@ -79,6 +79,7 @@ typedef enum {
     MBEDTLS_PK_RSA_ALT,
     MBEDTLS_PK_RSASSA_PSS,
     MBEDTLS_PK_OPAQUE,
+    MBEDTLS_PK_EDDSA,
 } mbedtls_pk_type_t;
 
 /**
@@ -1063,6 +1064,7 @@ static inline mbedtls_ecp_keypair *mbedtls_pk_ec(const mbedtls_pk_context pk)
         case MBEDTLS_PK_ECKEY:
         case MBEDTLS_PK_ECKEY_DH:
         case MBEDTLS_PK_ECDSA:
+        case MBEDTLS_PK_EDDSA:
             return (mbedtls_ecp_keypair *) (pk).MBEDTLS_PRIVATE(pk_ctx);
         default:
             return NULL;

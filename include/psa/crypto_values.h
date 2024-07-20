@@ -692,7 +692,6 @@
  *   to Curve448.
  *   Hamburg, _Ed448-Goldilocks, a new elliptic curve_, NIST ECC Workshop, 2015.
  *
- * \note Mbed TLS does not support Edwards curves yet.
  */
 #define PSA_ECC_FAMILY_TWISTED_EDWARDS   ((psa_ecc_family_t) 0x42)
 

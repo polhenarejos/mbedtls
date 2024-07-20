@@ -257,6 +257,8 @@
 #define PSA_VENDOR_ECC_MAX_CURVE_BITS 256u
 #elif defined(PSA_WANT_ECC_BRAINPOOL_P_R1_256)
 #define PSA_VENDOR_ECC_MAX_CURVE_BITS 256u
+#elif defined(PSA_WANT_ECC_EDWARDS_25519)
+#define PSA_VENDOR_ECC_MAX_CURVE_BITS 256u
 #elif defined(PSA_WANT_ECC_MONTGOMERY_255)
 #define PSA_VENDOR_ECC_MAX_CURVE_BITS 255u
 #elif defined(PSA_WANT_ECC_SECP_R1_224)
@@ -618,6 +620,17 @@
 #define PSA_ECDSA_SIGNATURE_SIZE(curve_bits)    \
     (PSA_BITS_TO_BYTES(curve_bits) * 2u)
 
+/**
+ * \brief EdDSA signature size for a given curve bit size
+ *
+ * \param curve_bits    Curve size in bits.
+ * \return              Signature size in bytes.
+ *
+ * \note This macro returns a compile-time constant if its argument is one.
+ */
+#define PSA_EDDSA_SIGNATURE_SIZE(curve_bits)    \
+    (PSA_BITS_TO_BYTES(curve_bits) * 2u)
+
 /** Sufficient signature buffer size for psa_sign_hash().
  *
  * This macro returns a sufficient buffer size for a signature using a key
@@ -651,6 +664,9 @@
 #define PSA_VENDOR_ECDSA_SIGNATURE_MAX_SIZE     \
     PSA_ECDSA_SIGNATURE_SIZE(PSA_VENDOR_ECC_MAX_CURVE_BITS)
 
+#define PSA_VENDOR_EDDSA_SIGNATURE_MAX_SIZE     \
+    PSA_EDDSA_SIGNATURE_SIZE(PSA_VENDOR_ECC_MAX_CURVE_BITS)
+
 /** \def PSA_SIGNATURE_MAX_SIZE
  *
  * Maximum size of an asymmetric signature.
@@ -664,6 +680,11 @@
     (PSA_VENDOR_ECDSA_SIGNATURE_MAX_SIZE > PSA_SIGNATURE_MAX_SIZE)
 #undef PSA_SIGNATURE_MAX_SIZE
 #define PSA_SIGNATURE_MAX_SIZE      PSA_VENDOR_ECDSA_SIGNATURE_MAX_SIZE
+#endif
+#if (defined(PSA_WANT_ALG_EDDSA)) && \
+    (PSA_VENDOR_EDDSA_SIGNATURE_MAX_SIZE > PSA_SIGNATURE_MAX_SIZE)
+#undef PSA_SIGNATURE_MAX_SIZE
+#define PSA_SIGNATURE_MAX_SIZE      PSA_VENDOR_EDDSA_SIGNATURE_MAX_SIZE
 #endif
 #if (defined(PSA_WANT_ALG_RSA_PKCS1V15_SIGN) || defined(PSA_WANT_ALG_RSA_PSS)) && \
     (PSA_BITS_TO_BYTES(PSA_VENDOR_RSA_MAX_KEY_BITS) > PSA_SIGNATURE_MAX_SIZE)

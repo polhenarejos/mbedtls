@@ -333,6 +333,15 @@ mbedtls_ecp_group_id mbedtls_ecc_group_from_psa(psa_ecc_family_t family,
 #endif
             }
             break;
+
+        case PSA_ECC_FAMILY_TWISTED_EDWARDS:
+            switch (bits) {
+#if defined(PSA_WANT_ECC_EDWARDS_25519)
+                case 256:
+                    return MBEDTLS_ECP_DP_ED25519;
+#endif
+            }
+            break;
     }
 
     return MBEDTLS_ECP_DP_NONE;

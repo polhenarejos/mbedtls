@@ -146,7 +146,6 @@ static int x509write_csr_der_internal(mbedtls_x509write_csr *ctx,
     size_t hash_len;
     psa_algorithm_t hash_alg = mbedtls_md_psa_alg_from_type(ctx->md_alg);
 #endif /* MBEDTLS_USE_PSA_CRYPTO */
-
     /* Write the CSR backwards starting from the end of buf */
     c = buf + size;
 
@@ -220,30 +219,38 @@ static int x509write_csr_der_internal(mbedtls_x509write_csr *ctx,
         return MBEDTLS_ERR_PLATFORM_HW_ACCEL_FAILED;
     }
 #else /* MBEDTLS_USE_PSA_CRYPTO */
-    ret = mbedtls_md(mbedtls_md_info_from_type(ctx->md_alg), c, len, hash);
-    if (ret != 0) {
-        return ret;
+    if (ctx->md_alg != MBEDTLS_MD_NONE) {
+        ret = mbedtls_md(mbedtls_md_info_from_type(ctx->md_alg), c, len, hash);
+        if (ret != 0) {
+            return ret;
+        }
     }
 #endif
-    if ((ret = mbedtls_pk_sign(ctx->key, ctx->md_alg, hash, 0,
+    printf("1\n");
+    if ((ret = mbedtls_pk_sign(ctx->key, ctx->md_alg, hash, len,
                                sig, sig_size, &sig_len,
                                f_rng, p_rng)) != 0) {
         return ret;
     }
+    printf("IEAS\n");
 
     if (mbedtls_pk_can_do(ctx->key, MBEDTLS_PK_RSA)) {
         pk_alg = MBEDTLS_PK_RSA;
     } else if (mbedtls_pk_can_do(ctx->key, MBEDTLS_PK_ECDSA)) {
         pk_alg = MBEDTLS_PK_ECDSA;
+    } else if (mbedtls_pk_can_do(ctx->key, MBEDTLS_PK_EDDSA)) {
+        pk_alg = MBEDTLS_PK_EDDSA;
     } else {
         return MBEDTLS_ERR_X509_INVALID_ALG;
     }
+    printf("IEAS\n");
 
     if ((ret = mbedtls_oid_get_oid_by_sig_alg(pk_alg, ctx->md_alg,
                                               &sig_oid, &sig_oid_len)) != 0) {
         return ret;
     }
 
+    printf("1\n");
     /*
      * Move the written CSR data to the start of buf to create space for
      * writing the signature into buf.

@@ -420,7 +420,7 @@ int mbedtls_pk_write_pubkey(unsigned char **p, unsigned char *start,
     } else
 #endif
 #if defined(MBEDTLS_PK_HAVE_ECC_KEYS)
-    if (mbedtls_pk_get_type(key) == MBEDTLS_PK_ECKEY) {
+    if (mbedtls_pk_get_type(key) == MBEDTLS_PK_ECKEY || mbedtls_pk_get_type(key) == MBEDTLS_PK_EDDSA) {
         MBEDTLS_ASN1_CHK_ADD(len, pk_write_ec_pubkey(p, start, key));
     } else
 #endif
@@ -485,9 +485,18 @@ int mbedtls_pk_write_pubkey_der(const mbedtls_pk_context *key, unsigned char *bu
 
     /* At this point oid_len is not null only for EC Montgomery keys. */
     if (oid_len == 0) {
-        ret = mbedtls_oid_get_oid_by_pk_alg(pk_type, &oid, &oid_len);
-        if (ret != 0) {
-            return ret;
+        mbedtls_ecp_group_id ec_grp_id = mbedtls_pk_get_ec_group_id(key);
+        if (MBEDTLS_PK_IS_RFC8410_GROUP_ID(ec_grp_id)) {
+            ret = mbedtls_oid_get_oid_by_ec_grp_algid(ec_grp_id, &oid, &oid_len);
+            if (ret != 0) {
+                return ret;
+            }
+            has_par = 0;
+        } else {
+            ret = mbedtls_oid_get_oid_by_pk_alg(pk_type, &oid, &oid_len);
+            if (ret != 0) {
+                return ret;
+            }
         }
     }
 

@@ -55,6 +55,7 @@
 //#define PSA_WANT_ALG_ECB_NO_PADDING             1
 #define PSA_WANT_ALG_ECDH                       1
 #define PSA_WANT_ALG_ECDSA                      1
+#define PSA_WANT_ALG_EDDSA                      1
 //#define PSA_WANT_ALG_GCM                        1
 #define PSA_WANT_ALG_HKDF                       1
 #define PSA_WANT_ALG_HMAC                       1
@@ -98,6 +99,7 @@
 #define PSA_WANT_ECC_SECP_R1_256                1
 //#define PSA_WANT_ECC_SECP_R1_384                1
 //#define PSA_WANT_ECC_SECP_R1_521                1
+//#define PSA_WANT_ECC_EDWARDS_255                1
 
 #define PSA_WANT_KEY_TYPE_DERIVE                1
 #define PSA_WANT_KEY_TYPE_HMAC                  1

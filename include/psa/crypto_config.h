@@ -55,6 +55,7 @@
 #define PSA_WANT_ALG_ECDH                       1
 #define PSA_WANT_ALG_FFDH                       1
 #define PSA_WANT_ALG_ECDSA                      1
+#define PSA_WANT_ALG_EDDSA                      1
 #define PSA_WANT_ALG_JPAKE                      1
 #define PSA_WANT_ALG_GCM                        1
 #define PSA_WANT_ALG_HKDF                       1
@@ -94,6 +95,7 @@
 #define PSA_WANT_ECC_MONTGOMERY_255             1
 #define PSA_WANT_ECC_MONTGOMERY_448             1
 #define PSA_WANT_ECC_SECP_K1_192                1
+#define PSA_WANT_ECC_EDWARDS_25519              1
 /*
  * SECP224K1 is buggy via the PSA API in Mbed TLS
  * (https://github.com/Mbed-TLS/mbedtls/issues/3541). Thus, do not enable it by

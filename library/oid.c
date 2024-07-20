@@ -458,6 +458,14 @@ static const oid_sig_alg_t oid_sig_alg[] =
     },
 #endif /* MBEDTLS_MD_CAN_SHA512 */
 #endif /* MBEDTLS_PK_CAN_ECDSA_SOME */
+#if defined(MBEDTLS_PK_CAN_EDDSA_SOME)
+#if defined(MBEDTLS_MD_CAN_SHA512)
+    {
+        OID_DESCRIPTOR(MBEDTLS_OID_ED25519,     "ed25519",    "EDDSA with ed25519"),
+        MBEDTLS_MD_NONE,   MBEDTLS_PK_EDDSA,
+    },
+#endif /* MBEDTLS_MD_CAN_SHA512 */
+#endif /* MBEDTLS_PK_CAN_EDDSA_SOME */
 #if defined(MBEDTLS_RSA_C)
     {
         OID_DESCRIPTOR(MBEDTLS_OID_RSASSA_PSS,        "RSASSA-PSS",           "RSASSA-PSS"),
@@ -645,6 +653,12 @@ static const oid_ecp_grp_algid_t oid_ecp_grp_algid[] =
         MBEDTLS_ECP_DP_CURVE448,
     },
 #endif /* MBEDTLS_ECP_HAVE_CURVE448 */
+#if defined(MBEDTLS_ECP_HAVE_ED25519)
+    {
+        OID_DESCRIPTOR(MBEDTLS_OID_ED25519,               "Ed25519",       "Ed25519"),
+        MBEDTLS_ECP_DP_ED25519,
+    },
+#endif /* MBEDTLS_ECP_HAVE_ED25519 */
     {
         NULL_OID_DESCRIPTOR,
         MBEDTLS_ECP_DP_NONE,

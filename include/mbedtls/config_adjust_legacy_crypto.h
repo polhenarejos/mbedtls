@@ -352,6 +352,26 @@
 #define MBEDTLS_PK_CAN_ECDSA_SOME
 #endif
 
+#if !defined(MBEDTLS_USE_PSA_CRYPTO)
+#if defined(MBEDTLS_EDDSA_C)
+#define MBEDTLS_PK_CAN_EDDSA_SIGN
+#define MBEDTLS_PK_CAN_EDDSA_VERIFY
+#endif /* MBEDTLS_EDDSA_C */
+#else /* MBEDTLS_USE_PSA_CRYPTO */
+#if defined(PSA_WANT_ALG_EDDSA)
+#if defined(PSA_WANT_KEY_TYPE_ECC_KEY_PAIR_BASIC)
+#define MBEDTLS_PK_CAN_EDDSA_SIGN
+#endif /* PSA_WANT_KEY_TYPE_ECC_KEY_PAIR_BASIC */
+#if defined(PSA_WANT_KEY_TYPE_ECC_PUBLIC_KEY)
+#define MBEDTLS_PK_CAN_EDDSA_VERIFY
+#endif /* PSA_WANT_KEY_TYPE_ECC_PUBLIC_KEY */
+#endif /* PSA_WANT_ALG_EDDSA */
+#endif /* MBEDTLS_USE_PSA_CRYPTO */
+
+#if defined(MBEDTLS_PK_CAN_EDDSA_VERIFY) || defined(MBEDTLS_PK_CAN_EDDSA_SIGN)
+#define MBEDTLS_PK_CAN_EDDSA_SOME
+#endif
+
 /* If MBEDTLS_PSA_CRYPTO_C is defined, make sure MBEDTLS_PSA_CRYPTO_CLIENT
  * is defined as well to include all PSA code.
  */
@@ -398,6 +418,9 @@
 #endif
 #if defined(MBEDTLS_ECP_DP_SECP192R1_ENABLED) || defined(PSA_WANT_ECC_SECP_R1_192)
 #define MBEDTLS_ECP_HAVE_SECP192R1
+#endif
+#if defined(MBEDTLS_ECP_DP_ED25519_ENABLED) || defined(PSA_WANT_ECC_EDWARDS_25519)
+#define MBEDTLS_ECP_HAVE_ED25519
 #endif
 
 /* Helper symbol to state that the PK module has support for EC keys. This
