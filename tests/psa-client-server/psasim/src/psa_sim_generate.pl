@@ -3,26 +3,49 @@
 # This is a proof-of-concept script to show that the client and server wrappers
 # can be created by a script. It is not hooked into the build, so is run
 # manually and the output files are what are to be reviewed. In due course
-# this will be replaced by a Python script.
+# this will be replaced by a Python script based on the
+# code_wrapper.psa_wrapper module.
 #
 # Copyright The Mbed TLS Contributors
 # SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
 #
 use strict;
 use Data::Dumper;
+use File::Basename;
 use JSON qw(encode_json);
 
 my $debug = 0;
 
 # Globals (sorry!)
+my $output_dir = dirname($0);
+
 my %functions = get_functions();
 my @functions = sort keys %functions;
 
+# We don't want these functions (e.g. because they are not implemented, etc)
+my @skip_functions = (
+    'mbedtls_psa_crypto_free', # redefined rather than wrapped
+    'mbedtls_psa_external_get_random', # not in the default config, uses unsupported type
+    'mbedtls_psa_get_stats', # uses unsupported type
+    'mbedtls_psa_inject_entropy', # not in the default config, generally not for client use anyway
+    'mbedtls_psa_platform_get_builtin_key', # not in the default config, uses unsupported type
+    'mbedtls_psa_register_se_key', # not in the default config, generally not for client use anyway
+    'psa_get_key_slot_number', # not in the default config, uses unsupported type
+    'psa_key_derivation_verify_bytes', # not implemented yet
+    'psa_key_derivation_verify_key', # not implemented yet
+);
+
+my $skip_functions_re = '\A(' . join('|', @skip_functions). ')\Z';
+@functions = grep(!/$skip_functions_re
+                   |_pake_ # Skip everything PAKE
+                   |_init\Z # constructors
+                   /x, @functions);
+# Restore psa_crypto_init() and put it first.
+unshift @functions, 'psa_crypto_init';
+
 # get_functions(), called above, returns a data structure for each function
-# that we need to create client and server stubs for. In this example Perl script,
-# the function declarations we want are in the data section (after __END__ at
-# the bottom of this file), but a production Python version should process
-# psa_crypto.h.
+# that we need to create client and server stubs for. The functions are
+# listed from PSA header files.
 #
 # In this script, the data for psa_crypto_init() looks like:
 #
@@ -71,14 +94,11 @@ my @functions = sort keys %functions;
 # It's possible that a production version might not need both type and ctypename;
 # that was done for convenience and future-proofing during development.
 
-# We'll do psa_crypto_init() first
-put_crypto_init_first(\@functions);
+write_function_codes("$output_dir/psa_functions_codes.h");
 
-write_function_codes("psa_functions_codes.h");
+write_client_calls("$output_dir/psa_sim_crypto_client.c");
 
-write_client_calls("psa_sim_crypto_client.c");
-
-write_server_implementations("psa_sim_crypto_server.c");
+write_server_implementations("$output_dir/psa_sim_crypto_server.c");
 
 sub write_function_codes
 {
@@ -244,6 +264,16 @@ EOF
 }
 EOF
 
+    # Finally, add psa_crypto_close()
+
+    print $fh <<EOF;
+
+void psa_crypto_close(void)
+{
+    psa_sim_serialize_reset();
+}
+EOF
+
     close($fh);
 }
 
@@ -268,6 +298,10 @@ sub server_implementations_header
 #include "psa_sim_serialise.h"
 
 #include "service.h"
+
+#if !defined(MBEDTLS_PSA_CRYPTO_C)
+#error "Error: MBEDTLS_PSA_CRYPTO_C must be enabled on server build"
+#endif
 EOF
 }
 
@@ -298,9 +332,13 @@ sub client_calls_header
 #include "psa/crypto.h"
 
 #define CLIENT_PRINT(fmt, ...) \
-    PRINT("Client: " fmt, ##__VA_ARGS__)
+    INFO("Client: " fmt, ##__VA_ARGS__)
 
 static psa_handle_t handle = -1;
+
+#if defined(MBEDTLS_PSA_CRYPTO_C)
+#error "Error: MBEDTLS_PSA_CRYPTO_C must be disabled on client build"
+#endif
 EOF
 
     $code .= debug_functions() if $debug;
@@ -321,7 +359,7 @@ int psa_crypto_call(int function,
     invec.base = in_params;
     invec.len = in_params_len;
 
-    size_t max_receive = 8192;
+    size_t max_receive = 24576;
     uint8_t *receive = malloc(max_receive);
     if (receive == NULL) {
         fprintf(stderr, "FAILED to allocate %u bytes\n", (unsigned) max_receive);
@@ -396,6 +434,11 @@ fail:
 
 void mbedtls_psa_crypto_free(void)
 {
+    /* Do not try to close a connection that was never started.*/
+    if (handle == -1) {
+        return;
+    }
+
     CLIENT_PRINT("Closing handle");
     psa_close(handle);
     handle = -1;
@@ -501,6 +544,9 @@ int ${name}_wrapper(
     uint8_t *in_params, size_t in_params_len,
     uint8_t **out_params, size_t *out_params_len)
 {
+EOF
+
+    print $fh <<EOF unless $ret_type eq "void";
     $ret_type $ret_name = $ret_default;
 EOF
     # Output the variables we will need when we call the target function
@@ -522,8 +568,9 @@ EOF
             push(@buffers, $n1);        # Add to the list to be free()d at end
         } else {
             $argname =~ s/^\*//;        # Remove any leading *
+            my $pointer = ($argtype =~ /^psa_\w+_operation_t/) ? "*" : "";
             print $fh <<EOF;
-    $argtype $argname;
+    $argtype $pointer$argname;
 EOF
         }
     }
@@ -567,16 +614,21 @@ EOF
             my ($n1, $n2) = split(/,\s*/, $argname);
             print $fh <<EOF;
 
-    ok = psasim_deserialise_${argtype}(&pos, &remaining, &$n1, &$n2);
+    ok = psasim_deserialise_${argtype}(
+        &pos, &remaining,
+        &$n1, &$n2);
     if (!ok) {
         goto fail;
     }
 EOF
         } else {
             $argname =~ s/^\*//;        # Remove any leading *
+            my $server_specific = ($argtype =~ /^psa_\w+_operation_t/) ? "server_" : "";
             print $fh <<EOF;
 
-    ok = psasim_deserialise_${argtype}(&pos, &remaining, &$argname);
+    ok = psasim_${server_specific}deserialise_${argtype}(
+        &pos, &remaining,
+        &$argname);
     if (!ok) {
         goto fail;
     }
@@ -588,11 +640,11 @@ EOF
 
     // Now we call the actual target function
 EOF
-    output_call($fh, $f, $name);
+    output_call($fh, $f, $name, 1);
 
     my @outputs = grep($_->{is_output}, @$args);
 
-    my $sep1 = ($ret_type eq "void") ? ";" : " +";
+    my $sep1 = (($ret_type eq "void") and ($#outputs < 0)) ? ";" : " +";
 
     print $fh <<EOF;
 
@@ -616,9 +668,10 @@ EOF
         my $sep = ($i == $#outputs) ? ";" : " +";
         $argtype =~ s/^const //;
         $argname =~ s/^\*//;        # Remove any leading *
+        my $server_specific = ($argtype =~ /^psa_\w+_operation_t/) ? "server_" : "";
 
         print $fh <<EOF;
-        psasim_serialise_${argtype}_needs($argname)$sep
+        psasim_${server_specific}serialise_${argtype}_needs($argname)$sep
 EOF
     }
 
@@ -641,7 +694,9 @@ EOF
     if ($ret_type ne "void") {
         print $fh <<EOF;
 
-    ok = psasim_serialise_${ret_type}(&rpos, &rremain, $ret_name);
+    ok = psasim_serialise_${ret_type}(
+        &rpos, &rremain,
+        $ret_name);
     if (!ok) {
         goto fail;
     }
@@ -661,7 +716,9 @@ EOF
         if ($argtype eq "buffer") {
             print $fh <<EOF;
 
-    ok = psasim_serialise_buffer(&rpos, &rremain, $argname);
+    ok = psasim_serialise_buffer(
+        &rpos, &rremain,
+        $argname);
     if (!ok) {
         goto fail;
     }
@@ -673,9 +730,21 @@ EOF
                 die("$0: $argname: HOW TO OUTPUT?\n");
             }
 
+            my $server_specific = ($argtype =~ /^psa_\w+_operation_t/) ? "server_" : "";
+
+            my $completed = ""; # Only needed on server serialise calls
+            if (length($server_specific)) {
+                # On server serialisation, which is only for operation types,
+                # we need to mark the operation as completed (variously called
+                # terminated or inactive in psa/crypto.h) on certain calls.
+                $completed = ($name =~ /_(abort|finish|hash_verify)$/) ? ", 1" : ", 0";
+            }
+
             print $fh <<EOF;
 
-    ok = psasim_serialise_${argtype}(&rpos, &rremain, $argname);
+    ok = psasim_${server_specific}serialise_${argtype}(
+        &rpos, &rremain,
+        $argname$completed);
     if (!ok) {
         goto fail;
     }
@@ -715,9 +784,11 @@ sub output_client
 
     print $fh <<EOF;
 {
-    uint8_t *params = NULL;
-    uint8_t *result = NULL;
+    uint8_t *ser_params = NULL;
+    uint8_t *ser_result = NULL;
     size_t result_length;
+EOF
+    print $fh <<EOF unless $ret_type eq "void";
     $ret_type $ret_name = $ret_default;
 EOF
 
@@ -728,7 +799,8 @@ EOF
 
     print $fh <<EOF;
 
-    size_t needed = psasim_serialise_begin_needs() +
+    size_t needed =
+        psasim_serialise_begin_needs() +
 EOF
 
     my $args = $f->{args};
@@ -741,19 +813,35 @@ EOF
         $argtype =~ s/^const //;
 
         print $fh <<EOF;
-                    psasim_serialise_${argtype}_needs($argname)$sep
+        psasim_serialise_${argtype}_needs($argname)$sep
+EOF
+    }
+
+    print $fh <<EOF if $#$args < 0;
+        0;
+EOF
+
+    print $fh <<EOF;
+
+    ser_params = malloc(needed);
+    if (ser_params == NULL) {
+EOF
+
+    if ($ret_type eq "psa_status_t") {
+        print $fh <<EOF if $;
+        $ret_name = PSA_ERROR_INSUFFICIENT_MEMORY;
+EOF
+    } elsif ($ret_type eq "uint32_t") {
+        print $fh <<EOF if $;
+        $ret_name = 0;
 EOF
     }
 
     print $fh <<EOF;
-
-    params = malloc(needed);
-    if (params == NULL) {
-        status = PSA_ERROR_INSUFFICIENT_MEMORY;
         goto fail;
     }
 
-    uint8_t *pos = params;
+    uint8_t *pos = ser_params;
     size_t remaining = needed;
     int ok;
     ok = psasim_serialise_begin(&pos, &remaining);
@@ -770,7 +858,9 @@ EOF
         $argtype =~ s/^const //;
 
         print $fh <<EOF;
-    ok = psasim_serialise_${argtype}(&pos, &remaining, $argname);
+    ok = psasim_serialise_${argtype}(
+        &pos, &remaining,
+        $argname);
     if (!ok) {
         goto fail;
     }
@@ -779,8 +869,8 @@ EOF
 
     print $fh <<EOF if $debug;
 
-    printf("client sending %d:\\n", (int)(pos - params));
-    dump_buffer(params, (size_t)(pos - params));
+    printf("client sending %d:\\n", (int)(pos - ser_params));
+    dump_buffer(ser_params, (size_t)(pos - ser_params));
 EOF
 
     my $enum = uc($name);
@@ -788,9 +878,9 @@ EOF
     print $fh <<EOF;
 
     ok = psa_crypto_call($enum,
-                         params, (size_t) (pos - params), &result, &result_length);
+                         ser_params, (size_t) (pos - ser_params), &ser_result, &result_length);
     if (!ok) {
-        printf("XXX server call failed\\n");
+        printf("$enum server call failed\\n");
         goto fail;
     }
 EOF
@@ -798,12 +888,12 @@ EOF
     print $fh <<EOF if $debug;
 
     printf("client receiving %d:\\n", (int)result_length);
-    dump_buffer(result, result_length);
+    dump_buffer(ser_result, result_length);
 EOF
 
     print $fh <<EOF;
 
-    uint8_t *rpos = result;
+    uint8_t *rpos = ser_result;
     size_t rremain = result_length;
 
     ok = psasim_deserialise_begin(&rpos, &rremain);
@@ -812,9 +902,11 @@ EOF
     }
 EOF
 
-    print $fh <<EOF;
+    print $fh <<EOF if $ret_type ne "void";
 
-    ok = psasim_deserialise_$ret_type(&rpos, &rremain, &$ret_name);
+    ok = psasim_deserialise_$ret_type(
+        &rpos, &rremain,
+        &$ret_name);
     if (!ok) {
         goto fail;
     }
@@ -833,7 +925,9 @@ EOF
         if ($argtype eq "buffer") {
             print $fh <<EOF;
 
-    ok = psasim_deserialise_return_buffer(&rpos, &rremain, $argname);
+    ok = psasim_deserialise_return_buffer(
+        &rpos, &rremain,
+        $argname);
     if (!ok) {
         goto fail;
     }
@@ -847,7 +941,9 @@ EOF
 
             print $fh <<EOF;
 
-    ok = psasim_deserialise_${argtype}(&rpos, &rremain, $argname);
+    ok = psasim_deserialise_${argtype}(
+        &rpos, &rremain,
+        $argname);
     if (!ok) {
         goto fail;
     }
@@ -857,10 +953,16 @@ EOF
     print $fh <<EOF;
 
 fail:
-    free(params);
-    free(result);
+    free(ser_params);
+    free(ser_result);
+EOF
+
+    print $fh <<EOF if $ret_type ne "void";
 
     return $ret_name;
+EOF
+
+    print $fh <<EOF;
 }
 EOF
 }
@@ -881,12 +983,17 @@ sub output_definition_begin
 
 sub output_call
 {
-    my ($fh, $f, $name) = @_;
+    my ($fh, $f, $name, $is_server) = @_;
 
+    my $ret_type = $f->{return}->{type};
     my $ret_name = $f->{return}->{name};
     my $args = $f->{args};
 
-    print $fh "\n    $ret_name = $name(\n";
+    if ($ret_type eq "void") {
+        print $fh "\n    $name(\n";
+    } else {
+        print $fh "\n    $ret_name = $name(\n";
+    }
 
     print $fh "        );\n" if $#$args < 0; # If no arguments, empty arg list
 
@@ -900,6 +1007,9 @@ sub output_call
             print $fh "        $n1, $n2";
         } else {
             $argname =~ s/^\*/\&/;      # Replace leading * with &
+            if ($is_server && $argtype =~ /^psa_\w+_operation_t/) {
+                $argname =~ s/^\&//;    # Actually, for psa_XXX_operation_t, don't do this on the server side
+            }
             print $fh "        $argname";
         }
         my $sep = ($i == $#$args) ? "\n        );" : ",";
@@ -918,7 +1028,7 @@ sub output_signature
 
     print $fh "\n$ret_type $name(\n";
 
-    print $fh "    void\n)\n" if $#$args < 0;   # No arguments
+    print $fh "    void\n    )\n" if $#$args < 0;   # No arguments
 
     for my $i (0 .. $#$args) {
         my $arg = $args->[$i];
@@ -940,14 +1050,21 @@ sub output_signature
 
 sub get_functions
 {
+    my $header_dir = 'tf-psa-crypto/include';
     my $src = "";
-    while (<DATA>) {
-        chomp;
-        s/\/\/.*//;
-        s/\s+^//;
-        s/\s+/ /g;
-        $_ .= "\n";
-        $src .= $_;
+    for my $header_file ('psa/crypto.h', 'psa/crypto_extra.h') {
+        local *HEADER;
+        open HEADER, '<', "$header_dir/$header_file"
+          or die "$header_dir/$header_file: $!";
+        while (<HEADER>) {
+            chomp;
+            s/\/\/.*//;
+            s/\s+^//;
+            s/\s+/ /g;
+            $_ .= "\n";
+            $src .= $_;
+        }
+        close HEADER;
     }
 
     $src =~ s/\/\*.*?\*\///gs;
@@ -958,15 +1075,23 @@ sub get_functions
     my %funcs = ();
     for (my $i = 0; $i <= $#src; $i++) {
         my $line = $src[$i];
-        if ($line =~ /^psa_status_t (psa_\w*)\(/) { # begin function definition
+        if ($line =~ /^(static(?:\s+inline)?\s+)?
+                       ((?:(?:enum|struct|union)\s+)?\w+\s*\**\s*)\s+
+                       ((?:mbedtls|psa)_\w*)\(/x) {
+            # begin function declaration
             #print "have one $line\n";
             while ($line !~ /;/) {
                 $line .= $src[$i + 1];
                 $i++;
             }
+            if ($line =~ /^static/) {
+                # IGNORE static inline functions: they're local.
+                next;
+            }
             $line =~ s/\s+/ /g;
             if ($line =~ /(\w+)\s+\b(\w+)\s*\(\s*(.*\S)\s*\)\s*[;{]/s) {
                 my ($ret_type, $func, $args) = ($1, $2, $3);
+
                 my $copy = $line;
                 $copy =~ s/{$//;
                 my $f = {
@@ -977,9 +1102,13 @@ sub get_functions
 
                 my $ret_name = "";
                 $ret_name = "status" if $ret_type eq "psa_status_t";
+                $ret_name = "value" if $ret_type eq "uint32_t";
+                $ret_name = "(void)" if $ret_type eq "void";
                 die("ret_name for $ret_type?") unless length($ret_name);
                 my $ret_default = "";
                 $ret_default = "PSA_ERROR_CORRUPTION_DETECTED" if $ret_type eq "psa_status_t";
+                $ret_default = "0" if $ret_type eq "uint32_t";
+                $ret_default = "(void)" if $ret_type eq "void";
                 die("ret_default for $ret_type?") unless length($ret_default);
 
                 #print "FUNC $func RET_NAME $ret_name RET_TYPE $ret_type ARGS (", join("; ", @args), ")\n";
@@ -1011,6 +1140,11 @@ sub get_functions
                         #print("$arg: $name: might be a buffer?\n");
                         die("$arg: not a buffer 1!\n") if $i == $#args;
                         my $next = $args[$i + 1];
+                        if ($func eq "psa_key_derivation_verify_bytes" &&
+                            $arg eq "const uint8_t *expected_output" &&
+                            $next eq "size_t output_length") {
+                            $next = "size_t expected_output_length";    # doesn't follow naming convention, so override
+                        }
                         die("$arg: not a buffer 2!\n") if $next !~ /^size_t\s+(${name}_\w+)$/;
                         $i++;                   # We're using the next param here
                         my $nname = $1;
@@ -1039,8 +1173,22 @@ sub get_functions
                 die("FAILED");
             }
             push(@rebuild, $line);
-        } elsif ($line =~ /^static psa_\w+_t (psa_\w*)\(/) { # begin function definition
-             # IGNORE static functions
+        } elsif ($line =~ /^#/i) {
+            # IGNORE directive
+            while ($line =~ /\\$/) {
+                $i++;
+                $line = $src[$i];
+            }
+        } elsif ($line =~ /^(?:typedef +)?(enum|struct|union)[^;]*$/) {
+            # IGNORE compound type definition
+            while ($line !~ /^\}/) {
+                $i++;
+                $line = $src[$i];
+            }
+        } elsif ($line =~ /^typedef /i) {
+            # IGNORE type definition
+        } elsif ($line =~ / = .*;$/) {
+            # IGNORE assignment in inline function definition
         } else {
             if ($line =~ /psa_/) {
                 print "NOT PARSED: $line\n";
@@ -1054,358 +1202,3 @@ sub get_functions
 
     return %funcs;
 }
-
-sub put_crypto_init_first
-{
-    my ($functions) = @_;
-
-    my $want_first = "psa_crypto_init";
-
-    my $idx = undef;
-    for my $i (0 .. $#$functions) {
-        if ($functions->[$i] eq $want_first) {
-            $idx = $i;
-            last;
-        }
-    }
-
-    if (defined($idx) && $idx != 0) {   # Do nothing if already first
-        splice(@$functions, $idx, 1);
-        unshift(@$functions, $want_first);
-    }
-}
-
-__END__
-/**
- * \brief Library initialization.
- *
- * Applications must call this function before calling any other
- * function in this module.
- *
- * Applications may call this function more than once. Once a call
- * succeeds, subsequent calls are guaranteed to succeed.
- *
- * If the application calls other functions before calling psa_crypto_init(),
- * the behavior is undefined. Implementations are encouraged to either perform
- * the operation as if the library had been initialized or to return
- * #PSA_ERROR_BAD_STATE or some other applicable error. In particular,
- * implementations should not return a success status if the lack of
- * initialization may have security implications, for example due to improper
- * seeding of the random number generator.
- *
- * \retval #PSA_SUCCESS \emptydescription
- * \retval #PSA_ERROR_INSUFFICIENT_MEMORY \emptydescription
- * \retval #PSA_ERROR_INSUFFICIENT_STORAGE \emptydescription
- * \retval #PSA_ERROR_COMMUNICATION_FAILURE \emptydescription
- * \retval #PSA_ERROR_HARDWARE_FAILURE \emptydescription
- * \retval #PSA_ERROR_CORRUPTION_DETECTED \emptydescription
- * \retval #PSA_ERROR_INSUFFICIENT_ENTROPY \emptydescription
- * \retval #PSA_ERROR_STORAGE_FAILURE \emptydescription
- * \retval #PSA_ERROR_DATA_INVALID \emptydescription
- * \retval #PSA_ERROR_DATA_CORRUPT \emptydescription
- */
-psa_status_t psa_crypto_init(void);
-
-/** Calculate the hash (digest) of a message.
- *
- * \note To verify the hash of a message against an
- *       expected value, use psa_hash_compare() instead.
- *
- * \param alg               The hash algorithm to compute (\c PSA_ALG_XXX value
- *                          such that #PSA_ALG_IS_HASH(\p alg) is true).
- * \param[in] input         Buffer containing the message to hash.
- * \param input_length      Size of the \p input buffer in bytes.
- * \param[out] hash         Buffer where the hash is to be written.
- * \param hash_size         Size of the \p hash buffer in bytes.
- * \param[out] hash_length  On success, the number of bytes
- *                          that make up the hash value. This is always
- *                          #PSA_HASH_LENGTH(\p alg).
- *
- * \retval #PSA_SUCCESS
- *         Success.
- * \retval #PSA_ERROR_NOT_SUPPORTED
- *         \p alg is not supported or is not a hash algorithm.
- * \retval #PSA_ERROR_INVALID_ARGUMENT \emptydescription
- * \retval #PSA_ERROR_BUFFER_TOO_SMALL
- *         \p hash_size is too small
- * \retval #PSA_ERROR_INSUFFICIENT_MEMORY \emptydescription
- * \retval #PSA_ERROR_COMMUNICATION_FAILURE \emptydescription
- * \retval #PSA_ERROR_HARDWARE_FAILURE \emptydescription
- * \retval #PSA_ERROR_CORRUPTION_DETECTED \emptydescription
- * \retval #PSA_ERROR_BAD_STATE
- *         The library has not been previously initialized by psa_crypto_init().
- *         It is implementation-dependent whether a failure to initialize
- *         results in this error code.
- */
-psa_status_t psa_hash_compute(psa_algorithm_t alg,
-                              const uint8_t *input,
-                              size_t input_length,
-                              uint8_t *hash,
-                              size_t hash_size,
-                              size_t *hash_length);
-
-/* XXX We put this next one in place to check we ignore static functions
- *     when we eventually read all this from a real header file
- */
-
-/** Return an initial value for a hash operation object.
- */
-static psa_hash_operation_t psa_hash_operation_init(void);
-
-/* XXX Back to normal function declarations */
-
-/** Set up a multipart hash operation.
- *
- * The sequence of operations to calculate a hash (message digest)
- * is as follows:
- * -# Allocate an operation object which will be passed to all the functions
- *    listed here.
- * -# Initialize the operation object with one of the methods described in the
- *    documentation for #psa_hash_operation_t, e.g. #PSA_HASH_OPERATION_INIT.
- * -# Call psa_hash_setup() to specify the algorithm.
- * -# Call psa_hash_update() zero, one or more times, passing a fragment
- *    of the message each time. The hash that is calculated is the hash
- *    of the concatenation of these messages in order.
- * -# To calculate the hash, call psa_hash_finish().
- *    To compare the hash with an expected value, call psa_hash_verify().
- *
- * If an error occurs at any step after a call to psa_hash_setup(), the
- * operation will need to be reset by a call to psa_hash_abort(). The
- * application may call psa_hash_abort() at any time after the operation
- * has been initialized.
- *
- * After a successful call to psa_hash_setup(), the application must
- * eventually terminate the operation. The following events terminate an
- * operation:
- * - A successful call to psa_hash_finish() or psa_hash_verify().
- * - A call to psa_hash_abort().
- *
- * \param[in,out] operation The operation object to set up. It must have
- *                          been initialized as per the documentation for
- *                          #psa_hash_operation_t and not yet in use.
- * \param alg               The hash algorithm to compute (\c PSA_ALG_XXX value
- *                          such that #PSA_ALG_IS_HASH(\p alg) is true).
- *
- * \retval #PSA_SUCCESS
- *         Success.
- * \retval #PSA_ERROR_NOT_SUPPORTED
- *         \p alg is not a supported hash algorithm.
- * \retval #PSA_ERROR_INVALID_ARGUMENT
- *         \p alg is not a hash algorithm.
- * \retval #PSA_ERROR_INSUFFICIENT_MEMORY \emptydescription
- * \retval #PSA_ERROR_COMMUNICATION_FAILURE \emptydescription
- * \retval #PSA_ERROR_HARDWARE_FAILURE \emptydescription
- * \retval #PSA_ERROR_CORRUPTION_DETECTED \emptydescription
- * \retval #PSA_ERROR_BAD_STATE
- *         The operation state is not valid (it must be inactive), or
- *         the library has not been previously initialized by psa_crypto_init().
- *         It is implementation-dependent whether a failure to initialize
- *         results in this error code.
- */
-psa_status_t psa_hash_setup(psa_hash_operation_t *operation,
-                            psa_algorithm_t alg);
-
-/** Add a message fragment to a multipart hash operation.
- *
- * The application must call psa_hash_setup() before calling this function.
- *
- * If this function returns an error status, the operation enters an error
- * state and must be aborted by calling psa_hash_abort().
- *
- * \param[in,out] operation Active hash operation.
- * \param[in] input         Buffer containing the message fragment to hash.
- * \param input_length      Size of the \p input buffer in bytes.
- *
- * \retval #PSA_SUCCESS
- *         Success.
- * \retval #PSA_ERROR_INSUFFICIENT_MEMORY \emptydescription
- * \retval #PSA_ERROR_COMMUNICATION_FAILURE \emptydescription
- * \retval #PSA_ERROR_HARDWARE_FAILURE \emptydescription
- * \retval #PSA_ERROR_CORRUPTION_DETECTED \emptydescription
- * \retval #PSA_ERROR_BAD_STATE
- *         The operation state is not valid (it must be active), or
- *         the library has not been previously initialized by psa_crypto_init().
- *         It is implementation-dependent whether a failure to initialize
- *         results in this error code.
- */
-psa_status_t psa_hash_update(psa_hash_operation_t *operation,
-                             const uint8_t *input,
-                             size_t input_length);
-
-/** Finish the calculation of the hash of a message.
- *
- * The application must call psa_hash_setup() before calling this function.
- * This function calculates the hash of the message formed by concatenating
- * the inputs passed to preceding calls to psa_hash_update().
- *
- * When this function returns successfully, the operation becomes inactive.
- * If this function returns an error status, the operation enters an error
- * state and must be aborted by calling psa_hash_abort().
- *
- * \warning Applications should not call this function if they expect
- *          a specific value for the hash. Call psa_hash_verify() instead.
- *          Beware that comparing integrity or authenticity data such as
- *          hash values with a function such as \c memcmp is risky
- *          because the time taken by the comparison may leak information
- *          about the hashed data which could allow an attacker to guess
- *          a valid hash and thereby bypass security controls.
- *
- * \param[in,out] operation     Active hash operation.
- * \param[out] hash             Buffer where the hash is to be written.
- * \param hash_size             Size of the \p hash buffer in bytes.
- * \param[out] hash_length      On success, the number of bytes
- *                              that make up the hash value. This is always
- *                              #PSA_HASH_LENGTH(\c alg) where \c alg is the
- *                              hash algorithm that is calculated.
- *
- * \retval #PSA_SUCCESS
- *         Success.
- * \retval #PSA_ERROR_BUFFER_TOO_SMALL
- *         The size of the \p hash buffer is too small. You can determine a
- *         sufficient buffer size by calling #PSA_HASH_LENGTH(\c alg)
- *         where \c alg is the hash algorithm that is calculated.
- * \retval #PSA_ERROR_INSUFFICIENT_MEMORY \emptydescription
- * \retval #PSA_ERROR_COMMUNICATION_FAILURE \emptydescription
- * \retval #PSA_ERROR_HARDWARE_FAILURE \emptydescription
- * \retval #PSA_ERROR_CORRUPTION_DETECTED \emptydescription
- * \retval #PSA_ERROR_BAD_STATE
- *         The operation state is not valid (it must be active), or
- *         the library has not been previously initialized by psa_crypto_init().
- *         It is implementation-dependent whether a failure to initialize
- *         results in this error code.
- */
-psa_status_t psa_hash_finish(psa_hash_operation_t *operation,
-                             uint8_t *hash,
-                             size_t hash_size,
-                             size_t *hash_length);
-
-/** Finish the calculation of the hash of a message and compare it with
- * an expected value.
- *
- * The application must call psa_hash_setup() before calling this function.
- * This function calculates the hash of the message formed by concatenating
- * the inputs passed to preceding calls to psa_hash_update(). It then
- * compares the calculated hash with the expected hash passed as a
- * parameter to this function.
- *
- * When this function returns successfully, the operation becomes inactive.
- * If this function returns an error status, the operation enters an error
- * state and must be aborted by calling psa_hash_abort().
- *
- * \note Implementations shall make the best effort to ensure that the
- * comparison between the actual hash and the expected hash is performed
- * in constant time.
- *
- * \param[in,out] operation     Active hash operation.
- * \param[in] hash              Buffer containing the expected hash value.
- * \param hash_length           Size of the \p hash buffer in bytes.
- *
- * \retval #PSA_SUCCESS
- *         The expected hash is identical to the actual hash of the message.
- * \retval #PSA_ERROR_INVALID_SIGNATURE
- *         The hash of the message was calculated successfully, but it
- *         differs from the expected hash.
- * \retval #PSA_ERROR_INSUFFICIENT_MEMORY \emptydescription
- * \retval #PSA_ERROR_COMMUNICATION_FAILURE \emptydescription
- * \retval #PSA_ERROR_HARDWARE_FAILURE \emptydescription
- * \retval #PSA_ERROR_CORRUPTION_DETECTED \emptydescription
- * \retval #PSA_ERROR_BAD_STATE
- *         The operation state is not valid (it must be active), or
- *         the library has not been previously initialized by psa_crypto_init().
- *         It is implementation-dependent whether a failure to initialize
- *         results in this error code.
- */
-psa_status_t psa_hash_verify(psa_hash_operation_t *operation,
-                             const uint8_t *hash,
-                             size_t hash_length);
-
-/** Abort a hash operation.
- *
- * Aborting an operation frees all associated resources except for the
- * \p operation structure itself. Once aborted, the operation object
- * can be reused for another operation by calling
- * psa_hash_setup() again.
- *
- * You may call this function any time after the operation object has
- * been initialized by one of the methods described in #psa_hash_operation_t.
- *
- * In particular, calling psa_hash_abort() after the operation has been
- * terminated by a call to psa_hash_abort(), psa_hash_finish() or
- * psa_hash_verify() is safe and has no effect.
- *
- * \param[in,out] operation     Initialized hash operation.
- *
- * \retval #PSA_SUCCESS \emptydescription
- * \retval #PSA_ERROR_COMMUNICATION_FAILURE \emptydescription
- * \retval #PSA_ERROR_HARDWARE_FAILURE \emptydescription
- * \retval #PSA_ERROR_CORRUPTION_DETECTED \emptydescription
- * \retval #PSA_ERROR_BAD_STATE
- *         The library has not been previously initialized by psa_crypto_init().
- *         It is implementation-dependent whether a failure to initialize
- *         results in this error code.
- */
-psa_status_t psa_hash_abort(psa_hash_operation_t *operation);
-
-/** Clone a hash operation.
- *
- * This function copies the state of an ongoing hash operation to
- * a new operation object. In other words, this function is equivalent
- * to calling psa_hash_setup() on \p target_operation with the same
- * algorithm that \p source_operation was set up for, then
- * psa_hash_update() on \p target_operation with the same input that
- * that was passed to \p source_operation. After this function returns, the
- * two objects are independent, i.e. subsequent calls involving one of
- * the objects do not affect the other object.
- *
- * \param[in] source_operation      The active hash operation to clone.
- * \param[in,out] target_operation  The operation object to set up.
- *                                  It must be initialized but not active.
- *
- * \retval #PSA_SUCCESS \emptydescription
- * \retval #PSA_ERROR_COMMUNICATION_FAILURE \emptydescription
- * \retval #PSA_ERROR_HARDWARE_FAILURE \emptydescription
- * \retval #PSA_ERROR_CORRUPTION_DETECTED \emptydescription
- * \retval #PSA_ERROR_INSUFFICIENT_MEMORY \emptydescription
- * \retval #PSA_ERROR_BAD_STATE
- *         The \p source_operation state is not valid (it must be active), or
- *         the \p target_operation state is not valid (it must be inactive), or
- *         the library has not been previously initialized by psa_crypto_init().
- *         It is implementation-dependent whether a failure to initialize
- *         results in this error code.
- */
-psa_status_t psa_hash_clone(const psa_hash_operation_t *source_operation,
-                            psa_hash_operation_t *target_operation);
-
-/** Calculate the hash (digest) of a message and compare it with a
- * reference value.
- *
- * \param alg               The hash algorithm to compute (\c PSA_ALG_XXX value
- *                          such that #PSA_ALG_IS_HASH(\p alg) is true).
- * \param[in] input         Buffer containing the message to hash.
- * \param input_length      Size of the \p input buffer in bytes.
- * \param[out] hash         Buffer containing the expected hash value.
- * \param hash_length       Size of the \p hash buffer in bytes.
- *
- * \retval #PSA_SUCCESS
- *         The expected hash is identical to the actual hash of the input.
- * \retval #PSA_ERROR_INVALID_SIGNATURE
- *         The hash of the message was calculated successfully, but it
- *         differs from the expected hash.
- * \retval #PSA_ERROR_NOT_SUPPORTED
- *         \p alg is not supported or is not a hash algorithm.
- * \retval #PSA_ERROR_INVALID_ARGUMENT
- *         \p input_length or \p hash_length do not match the hash size for \p alg
- * \retval #PSA_ERROR_INSUFFICIENT_MEMORY \emptydescription
- * \retval #PSA_ERROR_COMMUNICATION_FAILURE \emptydescription
- * \retval #PSA_ERROR_HARDWARE_FAILURE \emptydescription
- * \retval #PSA_ERROR_CORRUPTION_DETECTED \emptydescription
- * \retval #PSA_ERROR_BAD_STATE
- *         The library has not been previously initialized by psa_crypto_init().
- *         It is implementation-dependent whether a failure to initialize
- *         results in this error code.
- */
-psa_status_t psa_hash_compare(psa_algorithm_t alg,
-                              const uint8_t *input,
-                              size_t input_length,
-                              const uint8_t *hash,
-                              size_t hash_length);

@@ -12,14 +12,14 @@
 #include "mbedtls/md.h"
 
 #if !defined(MBEDTLS_X509_CSR_WRITE_C) || !defined(MBEDTLS_X509_CRT_PARSE_C) || \
-    !defined(MBEDTLS_PK_PARSE_C) || !defined(MBEDTLS_MD_CAN_SHA256) || \
+    !defined(MBEDTLS_PK_PARSE_C) || !defined(PSA_WANT_ALG_SHA_256) || \
     !defined(MBEDTLS_ENTROPY_C) || !defined(MBEDTLS_CTR_DRBG_C) || \
     !defined(MBEDTLS_PEM_WRITE_C) || !defined(MBEDTLS_FS_IO) || \
     !defined(MBEDTLS_MD_C)
 int main(void)
 {
     mbedtls_printf("MBEDTLS_X509_CSR_WRITE_C and/or MBEDTLS_FS_IO and/or "
-                   "MBEDTLS_PK_PARSE_C and/or MBEDTLS_MD_CAN_SHA256 and/or "
+                   "MBEDTLS_PK_PARSE_C and/or PSA_WANT_ALG_SHA_256 and/or "
                    "MBEDTLS_ENTROPY_C and/or MBEDTLS_CTR_DRBG_C "
                    "not defined.\n");
     mbedtls_exit(0);
@@ -94,22 +94,22 @@ int main(void)
  * global options
  */
 struct options {
-    const char *filename;             /* filename of the key file             */
-    const char *password;             /* password for the key file            */
-    int debug_level;                  /* level of debugging                   */
+    const char *filename;             /* filename of the key file                 */
+    const char *password;             /* password for the key file                */
+    int debug_level;                  /* level of debugging                       */
     const char *output_file;          /* where to store the constructed key file  */
-    const char *subject_name;         /* subject name for certificate request   */
-    mbedtls_x509_san_list *san_list;  /* subjectAltName for certificate request */
-    unsigned char key_usage;          /* key usage flags                      */
-    int force_key_usage;              /* Force adding the KeyUsage extension  */
-    unsigned char ns_cert_type;       /* NS cert type                         */
-    int force_ns_cert_type;           /* Force adding NsCertType extension    */
-    mbedtls_md_type_t md_alg;         /* Hash algorithm used for signature.   */
+    const char *subject_name;         /* subject name for certificate request     */
+    mbedtls_x509_san_list *san_list;  /* subjectAltName for certificate request   */
+    unsigned char key_usage;          /* key usage flags                          */
+    int force_key_usage;              /* Force adding the KeyUsage extension      */
+    unsigned char ns_cert_type;       /* NS cert type                             */
+    int force_ns_cert_type;           /* Force adding NsCertType extension        */
+    mbedtls_md_type_t md_alg;         /* Hash algorithm used for signature.       */
 } opt;
 
-int write_certificate_request(mbedtls_x509write_csr *req, const char *output_file,
-                              int (*f_rng)(void *, unsigned char *, size_t),
-                              void *p_rng)
+static int write_certificate_request(mbedtls_x509write_csr *req, const char *output_file,
+                                     int (*f_rng)(void *, unsigned char *, size_t),
+                                     void *p_rng)
 {
     int ret;
     FILE *f;

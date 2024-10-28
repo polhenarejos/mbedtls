@@ -11,12 +11,11 @@
  * - attributes: PKCS#9 v2.0 aka RFC 2985
  */
 
-#include "common.h"
+#include "x509_internal.h"
 
 #if defined(MBEDTLS_X509_CRT_WRITE_C)
 
 #include "mbedtls/x509_crt.h"
-#include "x509_internal.h"
 #include "mbedtls/asn1write.h"
 #include "mbedtls/error.h"
 #include "mbedtls/oid.h"
@@ -46,6 +45,10 @@ void mbedtls_x509write_crt_init(mbedtls_x509write_cert *ctx)
 
 void mbedtls_x509write_crt_free(mbedtls_x509write_cert *ctx)
 {
+    if (ctx == NULL) {
+        return;
+    }
+
     mbedtls_asn1_free_named_data_list(&ctx->subject);
     mbedtls_asn1_free_named_data_list(&ctx->issuer);
     mbedtls_asn1_free_named_data_list(&ctx->extensions);
@@ -191,7 +194,7 @@ int mbedtls_x509write_crt_set_basic_constraints(mbedtls_x509write_cert *ctx,
                                             is_ca, buf + sizeof(buf) - len, len);
 }
 
-#if defined(MBEDTLS_MD_CAN_SHA1)
+#if defined(PSA_WANT_ALG_SHA_1)
 static int mbedtls_x509write_crt_set_key_identifier(mbedtls_x509write_cert *ctx,
                                                     int is_ca,
                                                     unsigned char tag)
@@ -276,7 +279,7 @@ int mbedtls_x509write_crt_set_authority_key_identifier(mbedtls_x509write_cert *c
                                                     1,
                                                     (MBEDTLS_ASN1_CONTEXT_SPECIFIC | 0));
 }
-#endif /* MBEDTLS_MD_CAN_SHA1 */
+#endif /* PSA_WANT_ALG_SHA_1 */
 
 int mbedtls_x509write_crt_set_key_usage(mbedtls_x509write_cert *ctx,
                                         unsigned int key_usage)

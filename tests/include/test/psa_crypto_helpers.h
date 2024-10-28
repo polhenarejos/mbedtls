@@ -11,10 +11,12 @@
 
 #include "test/helpers.h"
 
-#if defined(MBEDTLS_PSA_CRYPTO_C)
+#if defined(MBEDTLS_PSA_CRYPTO_CLIENT)
 #include "test/psa_helpers.h"
 #include <psa/crypto.h>
 #endif
+
+#include <mbedtls/ctr_drbg.h>
 
 #if defined(MBEDTLS_PSA_CRYPTO_C)
 /** Initialize the PSA Crypto subsystem. */
@@ -38,12 +40,15 @@
         mbedtls_psa_crypto_free();                                      \
     }                                                                   \
     while (0)
-#else /*MBEDTLS_PSA_CRYPTO_C */
+#elif defined(MBEDTLS_PSA_CRYPTO_CLIENT) /* MBEDTLS_PSA_CRYPTO_CLIENT && !MBEDTLS_PSA_CRYPTO_C */
+#define PSA_INIT() PSA_ASSERT(psa_crypto_init())
+#define PSA_DONE() mbedtls_psa_crypto_free();
+#else  /* MBEDTLS_PSA_CRYPTO_CLIENT && !MBEDTLS_PSA_CRYPTO_C */
 #define PSA_INIT() ((void) 0)
 #define PSA_DONE() ((void) 0)
 #endif /* MBEDTLS_PSA_CRYPTO_C */
 
-#if defined(MBEDTLS_PSA_CRYPTO_C)
+#if defined(MBEDTLS_PSA_CRYPTO_CLIENT)
 
 #if defined(MBEDTLS_PSA_CRYPTO_STORAGE_C)
 
@@ -248,9 +253,7 @@ uint64_t mbedtls_test_parse_binary_string(data_t *bin_string);
  *  \param key_type  Key type
  *  \param key_bits  Key length in number of bits.
  */
-#if defined(MBEDTLS_AES_ALT) || \
-    defined(MBEDTLS_AES_SETKEY_ENC_ALT) || \
-    defined(MBEDTLS_PSA_ACCEL_KEY_TYPE_AES)
+#if defined(MBEDTLS_PSA_ACCEL_KEY_TYPE_AES)
 #define MBEDTLS_TEST_HAVE_ALT_AES 1
 #else
 #define MBEDTLS_TEST_HAVE_ALT_AES 0
@@ -291,18 +294,18 @@ uint64_t mbedtls_test_parse_binary_string(data_t *bin_string);
  *  \param  alg             The AEAD algorithm.
  *  \param  nonce_length    The nonce length in number of bytes.
  */
-#if defined(MBEDTLS_GCM_ALT) || \
-    defined(MBEDTLS_PSA_ACCEL_ALG_GCM)
-#define MBEDTLS_TEST_HAVE_ALT_GCM  1
+
+#if defined(MBEDTLS_PSA_ACCEL_ALG_GCM)
+#define MBEDTLS_TEST_HAVE_ACCEL_GCM  1
 #else
-#define MBEDTLS_TEST_HAVE_ALT_GCM  0
+#define MBEDTLS_TEST_HAVE_ACCEL_GCM  0
 #endif
 
 #define MBEDTLS_TEST_PSA_SKIP_IF_ALT_GCM_NOT_12BYTES_NONCE(alg,           \
                                                            nonce_length) \
     do                                                                     \
     {                                                                      \
-        if ((MBEDTLS_TEST_HAVE_ALT_GCM) &&                               \
+        if ((MBEDTLS_TEST_HAVE_ACCEL_GCM) &&                               \
             (PSA_ALG_AEAD_WITH_SHORTENED_TAG((alg), 0) ==            \
              PSA_ALG_AEAD_WITH_SHORTENED_TAG(PSA_ALG_GCM, 0)) &&       \
             ((nonce_length) != 12))                                   \
@@ -313,7 +316,7 @@ uint64_t mbedtls_test_parse_binary_string(data_t *bin_string);
     }                                                                      \
     while (0)
 
-#endif /* MBEDTLS_PSA_CRYPTO_C */
+#endif /* MBEDTLS_PSA_CRYPTO_CLIENT */
 
 /** \def USE_PSA_INIT
  *
@@ -430,12 +433,71 @@ uint64_t mbedtls_test_parse_binary_string(data_t *bin_string);
  * This is like #PSA_DONE except it does nothing under the same conditions as
  * #AES_PSA_INIT.
  */
-#if defined(MBEDTLS_AES_C)
-#define AES_PSA_INIT() ((void) 0)
-#define AES_PSA_DONE() ((void) 0)
-#else /* MBEDTLS_AES_C */
+#if defined(MBEDTLS_CTR_DRBG_USE_PSA_CRYPTO)
 #define AES_PSA_INIT()   PSA_INIT()
 #define AES_PSA_DONE()   PSA_DONE()
-#endif /* MBEDTLS_AES_C */
+#else /* MBEDTLS_CTR_DRBG_USE_PSA_CRYPTO */
+#define AES_PSA_INIT() ((void) 0)
+#define AES_PSA_DONE() ((void) 0)
+#endif /* MBEDTLS_CTR_DRBG_USE_PSA_CRYPTO */
+
+#if !defined(MBEDTLS_PSA_CRYPTO_EXTERNAL_RNG) &&                        \
+    defined(MBEDTLS_CTR_DRBG_C) &&                                      \
+    defined(MBEDTLS_CTR_DRBG_USE_PSA_CRYPTO)
+/* When AES_C is not defined and PSA does not have an external RNG,
+ * then CTR_DRBG uses PSA to perform AES-ECB. In this scenario 1 key
+ * slot is used internally from PSA to hold the AES key and it should
+ * not be taken into account when evaluating remaining open slots. */
+#define MBEDTLS_TEST_PSA_INTERNAL_KEYS_FOR_DRBG 1
+#else
+#define MBEDTLS_TEST_PSA_INTERNAL_KEYS_FOR_DRBG 0
+#endif
+
+/** The number of volatile keys that PSA crypto uses internally.
+ *
+ * We expect that many volatile keys to be in use after a successful
+ * psa_crypto_init().
+ */
+#define MBEDTLS_TEST_PSA_INTERNAL_KEYS          \
+    MBEDTLS_TEST_PSA_INTERNAL_KEYS_FOR_DRBG
+
+/* A couple of helper macros to verify if MBEDTLS_PSA_STATIC_KEY_SLOT_BUFFER_SIZE is
+ * large enough to contain an RSA key pair of the given size. This is meant to be
+ * used in test cases where MBEDTLS_PSA_STATIC_KEY_SLOTS is enabled. */
+#if defined(MBEDTLS_PSA_CRYPTO_CLIENT)
+
+#if (MBEDTLS_PSA_STATIC_KEY_SLOT_BUFFER_SIZE >= PSA_KEY_EXPORT_RSA_KEY_PAIR_MAX_SIZE(4096))
+#define MBEDTLS_TEST_STATIC_KEY_SLOTS_SUPPORT_RSA_4096
+#endif
+
+#if (MBEDTLS_PSA_STATIC_KEY_SLOT_BUFFER_SIZE >= PSA_KEY_EXPORT_RSA_KEY_PAIR_MAX_SIZE(2048))
+#define MBEDTLS_TEST_STATIC_KEY_SLOTS_SUPPORT_RSA_2048
+#endif
+
+#endif /* MBEDTLS_PSA_CRYPTO_CLIENT */
+
+/* Helper macro to get the size of the each key slot buffer. */
+#if defined(MBEDTLS_PSA_STATIC_KEY_SLOTS)
+#define MBEDTLS_PSA_KEY_BUFFER_MAX_SIZE     MBEDTLS_PSA_STATIC_KEY_SLOT_BUFFER_SIZE
+#else
+#define MBEDTLS_PSA_KEY_BUFFER_MAX_SIZE     SIZE_MAX
+#endif
+
+/* Helper macro for the PK module to check whether MBEDTLS_PSA_STATIC_KEY_SLOT_BUFFER_SIZE
+ * is large enough to contain 4096-bit RSA key pairs. Of course this check is only
+ * necessary if PK relies on PSA (i.e. MBEDTLS_USE_PSA_CRYPTO) to store and manage
+ * the key. */
+#if defined(MBEDTLS_USE_PSA_CRYPTO)
+
+#if !defined(MBEDTLS_PSA_STATIC_KEY_SLOTS) || \
+    defined(MBEDTLS_TEST_STATIC_KEY_SLOTS_SUPPORT_RSA_4096)
+#define MBEDTLS_TEST_PK_ALLOW_RSA_KEY_PAIR_4096
+#endif
+
+#else /* MBEDTLS_USE_PSA_CRYPTO */
+
+#define MBEDTLS_TEST_PK_ALLOW_RSA_KEY_PAIR_4096
+
+#endif /* MBEDTLS_USE_PSA_CRYPTO */
 
 #endif /* PSA_CRYPTO_HELPERS_H */

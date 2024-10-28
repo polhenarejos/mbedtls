@@ -28,10 +28,17 @@ no_test: programs
 programs: lib mbedtls_test
 	$(MAKE) -C programs
 
+ssl-opt: lib mbedtls_test
+	$(MAKE) -C programs ssl-opt
+	$(MAKE) -C tests ssl-opt
+
 lib:
 	$(MAKE) -C library
 
-tests: lib mbedtls_test
+ifndef PSASIM
+tests: lib
+endif
+tests: mbedtls_test
 	$(MAKE) -C tests
 
 mbedtls_test:
@@ -95,8 +102,9 @@ ifndef WINDOWS
 install: no_test
 	mkdir -p $(DESTDIR)/include/mbedtls
 	cp -rp include/mbedtls $(DESTDIR)/include
+	cp -rp tf-psa-crypto/drivers/builtin/include/mbedtls $(DESTDIR)/include
 	mkdir -p $(DESTDIR)/include/psa
-	cp -rp include/psa $(DESTDIR)/include
+	cp -rp tf-psa-crypto/include/psa $(DESTDIR)/include
 
 	mkdir -p $(DESTDIR)/lib
 	cp -RP library/libmbedtls.*    $(DESTDIR)/lib
@@ -167,7 +175,10 @@ else
 	if exist visualc\VS2017\mbedTLS.sln del /Q /F visualc\VS2017\mbedTLS.sln
 endif
 
-check: lib tests
+ifndef PSASIM
+check: lib
+endif
+check: tests
 	$(MAKE) -C tests check
 
 test: check
@@ -193,14 +204,23 @@ endif
 
 ## Editor navigation files
 C_SOURCE_FILES = $(wildcard \
-	3rdparty/*/include/*/*.h 3rdparty/*/include/*/*/*.h 3rdparty/*/include/*/*/*/*.h \
-	3rdparty/*/*.c 3rdparty/*/*/*.c 3rdparty/*/*/*/*.c 3rdparty/*/*/*/*/*.c \
 	include/*/*.h \
 	library/*.[hc] \
+	tf-psa-crypto/core/*.[hc] \
+	tf-psa-crypto/include/*/*.h \
+	tf-psa-crypto/drivers/*/include/*/*.h \
+	tf-psa-crypto/drivers/*/include/*/*/*.h \
+	tf-psa-crypto/drivers/*/include/*/*/*/*.h \
+	tf-psa-crypto/drivers/builtin/src/*.[hc] \
+	tf-psa-crypto/drivers/*/*.c \
+	tf-psa-crypto/drivers/*/*/*.c \
+	tf-psa-crypto/drivers/*/*/*/*.c \
+	tf-psa-crypto/drivers/*/*/*/*/*.c \
 	programs/*/*.[hc] \
 	tests/include/*/*.h tests/include/*/*/*.h \
 	tests/src/*.c tests/src/*/*.c \
 	tests/suites/*.function \
+	tf-psa-crypto/tests/suites/*.function \
 )
 # Exuberant-ctags invocation. Other ctags implementations may require different options.
 CTAGS = ctags --langmap=c:+.h.function --line-directives=no -o
@@ -213,5 +233,8 @@ GPATH GRTAGS GSYMS GTAGS: $(C_SOURCE_FILES)
 	ls $(C_SOURCE_FILES) | gtags -f - --gtagsconf .globalrc
 cscope: cscope.in.out cscope.po.out cscope.out
 cscope.in.out cscope.po.out cscope.out: $(C_SOURCE_FILES)
-	cscope -bq -u -Iinclude -Ilibrary $(patsubst %,-I%,$(wildcard 3rdparty/*/include)) -Itests/include $(C_SOURCE_FILES)
+	cscope -bq -u -Iinclude -Ilibrary -Itf-psa-crypto/core \
+        -Itf-psa-crypto/include \
+	-Itf-psa-crypto/drivers/builtin/src \
+	$(patsubst %,-I%,$(wildcard tf-psa-crypto/drivers/*/include)) -Itests/include $(C_SOURCE_FILES)
 .PHONY: cscope global

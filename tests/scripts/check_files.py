@@ -107,12 +107,12 @@ BINARY_FILE_PATH_RE_LIST = [
     r'docs/.*\.pdf\Z',
     r'docs/.*\.png\Z',
     r'programs/fuzz/corpuses/[^.]+\Z',
-    r'tests/data_files/[^.]+\Z',
-    r'tests/data_files/.*\.(crt|csr|db|der|key|pubkey)\Z',
-    r'tests/data_files/.*\.req\.[^/]+\Z',
-    r'tests/data_files/.*malformed[^/]+\Z',
-    r'tests/data_files/format_pkcs12\.fmt\Z',
-    r'tests/data_files/.*\.bin\Z',
+    r'framework/data_files/[^.]+\Z',
+    r'framework/data_files/.*\.(crt|csr|db|der|key|pubkey)\Z',
+    r'framework/data_files/.*\.req\.[^/]+\Z',
+    r'framework/data_files/.*malformed[^/]+\Z',
+    r'framework/data_files/format_pkcs12\.fmt\Z',
+    r'framework/data_files/.*\.bin\Z',
 ]
 BINARY_FILE_PATH_RE = re.compile('|'.join(BINARY_FILE_PATH_RE_LIST))
 
@@ -368,9 +368,8 @@ class LicenseIssueTracker(LineIssueTracker):
     heading = "License issue:"
 
     LICENSE_EXEMPTION_RE_LIST = [
-        # Third-party code, other than whitelisted third-party modules,
-        # may be under a different license.
-        r'3rdparty/(?!(p256-m)/.*)',
+        # Exempt third-party drivers which may be under a different license
+        r'tf-psa-crypto/drivers/(?=(everest)/.*)',
         # Documentation explaining the license may have accidental
         # false positives.
         r'(ChangeLog|LICENSE|framework\/LICENSE|[-0-9A-Z_a-z]+\.md)\Z',
@@ -447,6 +446,25 @@ class LicenseIssueTracker(LineIssueTracker):
         return False
 
 
+class ErrorAddIssueTracker(LineIssueTracker):
+    """Signal direct additions of error codes.
+
+    Adding a low-level error code with a high-level error code is deprecated
+    and should use MBEDTLS_ERROR_ADD.
+    """
+
+    heading = "Direct addition of error codes"
+
+    _ERR_PLUS_RE = re.compile(br'MBEDTLS_ERR_\w+ *\+|'
+                              br'\+ *MBEDTLS_ERR_')
+    _EXCLUDE_RE = re.compile(br' *case ')
+
+    def issue_with_line(self, line, filepath, line_number):
+        if self._ERR_PLUS_RE.search(line) and not self._EXCLUDE_RE.match(line):
+            return True
+        return False
+
+
 class IntegrityChecker:
     """Sanity-check files under the current directory."""
 
@@ -468,6 +486,7 @@ class IntegrityChecker:
             TabIssueTracker(),
             MergeArtifactIssueTracker(),
             LicenseIssueTracker(),
+            ErrorAddIssueTracker(),
         ]
 
     def setup_logger(self, log_file, level=logging.INFO):

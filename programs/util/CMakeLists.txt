@@ -1,11 +1,13 @@
 set(libs
     ${mbedcrypto_target}
+    ${mbedx509_target}
 )
 
 set(executables
     pem2der
     strerror
 )
+add_dependencies(${programs_target} ${executables})
 
 foreach(exe IN LISTS executables)
     add_executable(${exe} ${exe}.c $<TARGET_OBJECTS:mbedtls_test>)

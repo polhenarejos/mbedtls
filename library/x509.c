@@ -15,11 +15,10 @@
  *  http://www.itu.int/ITU-T/studygroups/com17/languages/X.690-0207.pdf
  */
 
-#include "common.h"
+#include "x509_internal.h"
 
 #if defined(MBEDTLS_X509_USE_C)
 
-#include "x509_internal.h"
 #include "mbedtls/asn1.h"
 #include "mbedtls/error.h"
 #include "mbedtls/oid.h"
@@ -129,31 +128,31 @@ int mbedtls_x509_get_alg(unsigned char **p, const unsigned char *end,
 static inline const char *md_type_to_string(mbedtls_md_type_t md_alg)
 {
     switch (md_alg) {
-#if defined(MBEDTLS_MD_CAN_MD5)
+#if defined(PSA_WANT_ALG_MD5)
         case MBEDTLS_MD_MD5:
             return "MD5";
 #endif
-#if defined(MBEDTLS_MD_CAN_SHA1)
+#if defined(PSA_WANT_ALG_SHA_1)
         case MBEDTLS_MD_SHA1:
             return "SHA1";
 #endif
-#if defined(MBEDTLS_MD_CAN_SHA224)
+#if defined(PSA_WANT_ALG_SHA_224)
         case MBEDTLS_MD_SHA224:
             return "SHA224";
 #endif
-#if defined(MBEDTLS_MD_CAN_SHA256)
+#if defined(PSA_WANT_ALG_SHA_256)
         case MBEDTLS_MD_SHA256:
             return "SHA256";
 #endif
-#if defined(MBEDTLS_MD_CAN_SHA384)
+#if defined(PSA_WANT_ALG_SHA_384)
         case MBEDTLS_MD_SHA384:
             return "SHA384";
 #endif
-#if defined(MBEDTLS_MD_CAN_SHA512)
+#if defined(PSA_WANT_ALG_SHA_512)
         case MBEDTLS_MD_SHA512:
             return "SHA512";
 #endif
-#if defined(MBEDTLS_MD_CAN_RIPEMD160)
+#if defined(PSA_WANT_ALG_RIPEMD160)
         case MBEDTLS_MD_RIPEMD160:
             return "RIPEMD160";
 #endif
@@ -803,6 +802,75 @@ int mbedtls_x509_get_ext(unsigned char **p, const unsigned char *end,
 static char nibble_to_hex_digit(int i)
 {
     return (i < 10) ? (i + '0') : (i - 10 + 'A');
+}
+
+/* Return the x.y.z.... style numeric string for the given OID */
+int mbedtls_oid_get_numeric_string(char *buf, size_t size,
+                                   const mbedtls_asn1_buf *oid)
+{
+    int ret = MBEDTLS_ERR_ERROR_CORRUPTION_DETECTED;
+    char *p = buf;
+    size_t n = size;
+    unsigned int value = 0;
+
+    if (size > INT_MAX) {
+        /* Avoid overflow computing return value */
+        return MBEDTLS_ERR_ASN1_INVALID_LENGTH;
+    }
+
+    if (oid->len <= 0) {
+        /* OID must not be empty */
+        return MBEDTLS_ERR_ASN1_OUT_OF_DATA;
+    }
+
+    for (size_t i = 0; i < oid->len; i++) {
+        /* Prevent overflow in value. */
+        if (value > (UINT_MAX >> 7)) {
+            return MBEDTLS_ERR_ASN1_INVALID_DATA;
+        }
+        if ((value == 0) && ((oid->p[i]) == 0x80)) {
+            /* Overlong encoding is not allowed */
+            return MBEDTLS_ERR_ASN1_INVALID_DATA;
+        }
+
+        value <<= 7;
+        value |= oid->p[i] & 0x7F;
+
+        if (!(oid->p[i] & 0x80)) {
+            /* Last byte */
+            if (n == size) {
+                int component1;
+                unsigned int component2;
+                /* First subidentifier contains first two OID components */
+                if (value >= 80) {
+                    component1 = '2';
+                    component2 = value - 80;
+                } else if (value >= 40) {
+                    component1 = '1';
+                    component2 = value - 40;
+                } else {
+                    component1 = '0';
+                    component2 = value;
+                }
+                ret = mbedtls_snprintf(p, n, "%c.%u", component1, component2);
+            } else {
+                ret = mbedtls_snprintf(p, n, ".%u", value);
+            }
+            if (ret < 2 || (size_t) ret >= n) {
+                return MBEDTLS_ERR_OID_BUF_TOO_SMALL;
+            }
+            n -= (size_t) ret;
+            p += ret;
+            value = 0;
+        }
+    }
+
+    if (value != 0) {
+        /* Unterminated subidentifier */
+        return MBEDTLS_ERR_ASN1_OUT_OF_DATA;
+    }
+
+    return (int) (size - n);
 }
 
 /*

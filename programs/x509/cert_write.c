@@ -14,12 +14,12 @@
 #if !defined(MBEDTLS_X509_CRT_WRITE_C) || \
     !defined(MBEDTLS_X509_CRT_PARSE_C) || !defined(MBEDTLS_FS_IO) || \
     !defined(MBEDTLS_ENTROPY_C) || !defined(MBEDTLS_CTR_DRBG_C) || \
-    !defined(MBEDTLS_ERROR_C) || !defined(MBEDTLS_MD_CAN_SHA256) || \
+    !defined(MBEDTLS_ERROR_C) || !defined(PSA_WANT_ALG_SHA_256) || \
     !defined(MBEDTLS_PEM_WRITE_C) || !defined(MBEDTLS_MD_C)
 int main(void)
 {
     mbedtls_printf("MBEDTLS_X509_CRT_WRITE_C and/or MBEDTLS_X509_CRT_PARSE_C and/or "
-                   "MBEDTLS_FS_IO and/or MBEDTLS_MD_CAN_SHA256 and/or "
+                   "MBEDTLS_FS_IO and/or PSA_WANT_ALG_SHA_256 and/or "
                    "MBEDTLS_ENTROPY_C and/or MBEDTLS_CTR_DRBG_C and/or "
                    "MBEDTLS_ERROR_C not defined.\n");
     mbedtls_exit(0);
@@ -204,9 +204,9 @@ struct options {
     int format;                 /* format                               */
 } opt;
 
-int write_certificate(mbedtls_x509write_cert *crt, const char *output_file,
-                      int (*f_rng)(void *, unsigned char *, size_t),
-                      void *p_rng)
+static int write_certificate(mbedtls_x509write_cert *crt, const char *output_file,
+                             int (*f_rng)(void *, unsigned char *, size_t),
+                             void *p_rng)
 {
     int ret;
     FILE *f;
@@ -249,8 +249,8 @@ int write_certificate(mbedtls_x509write_cert *crt, const char *output_file,
     return 0;
 }
 
-int parse_serial_decimal_format(unsigned char *obuf, size_t obufmax,
-                                const char *ibuf, size_t *len)
+static int parse_serial_decimal_format(unsigned char *obuf, size_t obufmax,
+                                       const char *ibuf, size_t *len)
 {
     unsigned long long int dec;
     unsigned int remaining_bytes = sizeof(dec);
@@ -880,7 +880,7 @@ usage:
         mbedtls_printf(" ok\n");
     }
 
-#if defined(MBEDTLS_MD_CAN_SHA1)
+#if defined(PSA_WANT_ALG_SHA_1)
     if (opt.version == MBEDTLS_X509_CRT_VERSION_3 &&
         opt.subject_identifier != 0) {
         mbedtls_printf("  . Adding the Subject Key Identifier ...");
@@ -914,7 +914,7 @@ usage:
 
         mbedtls_printf(" ok\n");
     }
-#endif /* MBEDTLS_MD_CAN_SHA1 */
+#endif /* PSA_WANT_ALG_SHA_1 */
 
     if (opt.version == MBEDTLS_X509_CRT_VERSION_3 &&
         opt.key_usage != 0) {

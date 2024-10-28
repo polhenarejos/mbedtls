@@ -5,14 +5,13 @@
  *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
  */
 
-#include "common.h"
+#include "ssl_misc.h"
 
 #if defined(MBEDTLS_SSL_SRV_C) && defined(MBEDTLS_SSL_PROTO_TLS1_2)
 
 #include "mbedtls/platform.h"
 
 #include "mbedtls/ssl.h"
-#include "ssl_misc.h"
 #include "debug_internal.h"
 #include "mbedtls/error.h"
 #include "mbedtls/platform_util.h"
@@ -756,7 +755,9 @@ static int ssl_pick_cert(mbedtls_ssl_context *ssl,
          * and decrypting with the same RSA key.
          */
         if (mbedtls_ssl_check_cert_usage(cur->cert, ciphersuite_info,
-                                         MBEDTLS_SSL_IS_SERVER, &flags) != 0) {
+                                         MBEDTLS_SSL_IS_CLIENT,
+                                         MBEDTLS_SSL_VERSION_TLS1_2,
+                                         &flags) != 0) {
             MBEDTLS_SSL_DEBUG_MSG(3, ("certificate mismatch: "
                                       "(extended) key usage extension"));
             continue;
@@ -3921,7 +3922,7 @@ static int ssl_parse_client_key_exchange(mbedtls_ssl_context *ssl)
 #if defined(MBEDTLS_USE_PSA_CRYPTO)
         psa_status_t status = PSA_ERROR_CORRUPTION_DETECTED;
         psa_status_t destruction_status = PSA_ERROR_CORRUPTION_DETECTED;
-        uint8_t ecpoint_len;
+        size_t ecpoint_len;
 
         mbedtls_ssl_handshake_params *handshake = ssl->handshake;
 

@@ -52,11 +52,14 @@ int psa_server_main(int argc, char *argv[])
     psa_msg_t msg = { -1 };
     const int magic_num = 66;
     int client_disconnected = 0;
-    char mbedtls_version[18];
     extern psa_status_t psa_crypto_call(psa_msg_t msg);
+    extern psa_status_t psa_crypto_close(void);
 
+#if defined(MBEDTLS_VERSION_C)
+    char mbedtls_version[18];
     mbedtls_version_get_string_full(mbedtls_version);
     SERVER_PRINT("%s", mbedtls_version);
+#endif
 
     parse_input_args(argc, argv);
     SERVER_PRINT("Starting");
@@ -81,6 +84,7 @@ int psa_server_main(int argc, char *argv[])
                         SERVER_PRINT("Got a disconnection message");
                         ret = PSA_SUCCESS;
                         client_disconnected = 1;
+                        psa_crypto_close();
                         break;
                     default:
                         SERVER_PRINT("Got an IPC call of type %d", msg.type);

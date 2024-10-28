@@ -26,8 +26,6 @@
 #define MAX_CLIENTS 128
 #define MAX_MESSAGES 32
 
-#define SLEEP_MS        50
-
 struct connection {
     uint32_t client;
     void *rhandle;
@@ -104,9 +102,6 @@ psa_signal_t psa_wait(psa_signal_t signal_mask, uint32_t timeout)
     uint32_t requested_version;
     ssize_t len;
     int idx;
-#if !defined(PSASIM_USE_USLEEP)
-    const struct timespec ts_delay = { .tv_sec = 0, .tv_nsec = SLEEP_MS * 1000000 };
-#endif
 
     if (timeout == PSA_POLL) {
         INFO("psa_wait: Called in polling mode");
@@ -261,11 +256,6 @@ psa_signal_t psa_wait(psa_signal_t signal_mask, uint32_t timeout)
             break;
         } else {
             /* There is no 'select' function in SysV to block on multiple queues, so busy-wait :( */
-#if defined(PSASIM_USE_USLEEP)
-            usleep(SLEEP_MS * 1000);
-#else /* PSASIM_USE_USLEEP */
-            nanosleep(&ts_delay, NULL);
-#endif /* PSASIM_USE_USLEEP */
         }
     } while (timeout == PSA_BLOCK);
 
@@ -474,7 +464,7 @@ void psa_write(psa_handle_t msg_handle, uint32_t outvec_idx,
 
     while (sofar < num_bytes) {
         size_t sending = (num_bytes - sofar);
-        if (sending >= MAX_FRAGMENT_SIZE) {
+        if (sending > (MAX_FRAGMENT_SIZE - (sizeof(size_t) * 2))) {
             sending = MAX_FRAGMENT_SIZE - (sizeof(size_t) * 2);
         }
 
@@ -615,9 +605,9 @@ void __init_psasim(const char **array,
     key_t key;
     int qid;
     FILE *fp;
-    char doorbell_path[PATHNAMESIZE] = { 0 };
+    char doorbell_file[PATHNAMESIZE] = { 0 };
     char queue_path[PATHNAMESIZE];
-    snprintf(doorbell_path, PATHNAMESIZE, TMP_FILE_BASE_PATH "psa_notify_%u", getpid());
+    snprintf(doorbell_file, PATHNAMESIZE, "psa_notify_%u", getpid());
 
     if (library_initialised > 0) {
         return;
@@ -629,7 +619,7 @@ void __init_psasim(const char **array,
         FATAL("Unsupported value. Aborting.");
     }
 
-    array[3] = doorbell_path;
+    array[3] = doorbell_file;
 
     for (int i = 0; i < 32; i++) {
         if (strncmp(array[i], "", 1) != 0) {

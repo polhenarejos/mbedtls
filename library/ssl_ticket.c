@@ -5,13 +5,12 @@
  *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
  */
 
-#include "common.h"
+#include "ssl_misc.h"
 
 #if defined(MBEDTLS_SSL_TICKET_C)
 
 #include "mbedtls/platform.h"
 
-#include "ssl_misc.h"
 #include "mbedtls/ssl_ticket.h"
 #include "mbedtls/error.h"
 #include "mbedtls/platform_util.h"
@@ -534,6 +533,10 @@ cleanup:
  */
 void mbedtls_ssl_ticket_free(mbedtls_ssl_ticket_context *ctx)
 {
+    if (ctx == NULL) {
+        return;
+    }
+
 #if defined(MBEDTLS_USE_PSA_CRYPTO)
     psa_destroy_key(ctx->keys[0].key);
     psa_destroy_key(ctx->keys[1].key);
