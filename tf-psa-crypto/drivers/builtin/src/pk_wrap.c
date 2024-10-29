@@ -818,7 +818,7 @@ static int ecdsa_sign_wrap(mbedtls_pk_context *pk, mbedtls_md_type_t md_alg,
 #endif /* MBEDTLS_USE_PSA_CRYPTO */
 #endif /* PSA_HAVE_ALG_ECDSA_SIGN */
 
-#if defined(MBEDTLS_PK_CAN_EDDSA_VERIFY)
+#if defined(PSA_HAVE_ALG_EDDSA_VERIFY)
 static int eddsa_verify_wrap(mbedtls_pk_context *pk, mbedtls_md_type_t md_alg,
                              const unsigned char *hash, size_t hash_len,
                              const unsigned char *sig, size_t sig_len)
@@ -836,16 +836,15 @@ static int eddsa_verify_wrap(mbedtls_pk_context *pk, mbedtls_md_type_t md_alg,
 
     return ret;
 }
-#endif /* MBEDTLS_PK_CAN_EDDSA_VERIFY */
+#endif /* PSA_HAVE_ALG_EDDSA_VERIFY */
 
-#if defined(MBEDTLS_PK_CAN_EDDSA_SIGN)
+#if defined(PSA_HAVE_ALG_EDDSA_SIGN)
 static int eddsa_sign_wrap(mbedtls_pk_context *pk, mbedtls_md_type_t md_alg,
                            const unsigned char *hash, size_t hash_len,
                            unsigned char *sig, size_t sig_size, size_t *sig_len,
                            int (*f_rng)(void *, unsigned char *, size_t), void *p_rng)
 {
     ((void) md_alg);
-    printf("IEAS\n");
     return mbedtls_eddsa_write_signature((mbedtls_ecp_keypair *)pk->pk_ctx,
                                          hash, hash_len,
                                          sig, sig_size, sig_len,
@@ -853,7 +852,7 @@ static int eddsa_sign_wrap(mbedtls_pk_context *pk, mbedtls_md_type_t md_alg,
                                          f_rng, p_rng);
 }
 
-#endif /* MBEDTLS_PK_CAN_EDDSA_SIGN */
+#endif /* PSA_HAVE_ALG_EDDSA_SIGN */
 
 #if defined(MBEDTLS_ECDSA_C) && defined(MBEDTLS_ECP_RESTARTABLE)
 /* Forward declarations */

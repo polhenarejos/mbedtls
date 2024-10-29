@@ -117,7 +117,7 @@ extern const mbedtls_pk_info_t mbedtls_eckeydh_info;
 extern const mbedtls_pk_info_t mbedtls_ecdsa_info;
 #endif
 
-#if defined(MBEDTLS_PK_CAN_EDDSA_SOME)
+#if defined(PSA_HAVE_ALG_SOME_EDDSA)
 extern const mbedtls_pk_info_t mbedtls_eddsa_info;
 #endif
 

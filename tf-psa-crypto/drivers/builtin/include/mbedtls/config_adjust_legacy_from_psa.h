@@ -297,6 +297,15 @@
 #endif /* missing accel */
 #endif /* PSA_WANT_ALG_ECDSA */
 
+#if defined(PSA_WANT_ALG_EDDSA)
+#define MBEDTLS_PSA_BUILTIN_ALG_EDDSA 1
+#define MBEDTLS_EDDSA_C
+#define MBEDTLS_ECP_C
+#define MBEDTLS_BIGNUM_C
+#define MBEDTLS_ASN1_PARSE_C
+#define MBEDTLS_ASN1_WRITE_C
+#endif /* PSA_WANT_ALG_EDDSA */
+
 #if defined(PSA_WANT_ALG_JPAKE)
 #if !defined(MBEDTLS_PSA_ACCEL_ALG_JPAKE) || \
     !defined(MBEDTLS_PSA_ACCEL_ECC_SECP_R1_256) || \

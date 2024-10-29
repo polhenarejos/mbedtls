@@ -290,6 +290,7 @@ REVERSE_DEPENDENCIES = {
                         'PSA_WANT_ALG_ECDSA',
                         'PSA_WANT_ALG_DETERMINISTIC_ECDSA'],
     'MBEDTLS_ECP_C': ['MBEDTLS_ECDSA_C',
+                      'MBEDTLS_EDDSA_C',
                       'MBEDTLS_ECDH_C', 'PSA_WANT_ALG_ECDH',
                       'MBEDTLS_ECJPAKE_C',
                       'MBEDTLS_ECP_RESTARTABLE',
