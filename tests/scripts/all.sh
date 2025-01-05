@@ -10,7 +10,7 @@
 
 # This script must be invoked from the project's root.
 
-# The path is going to change when this is moved to the framework
-source tests/scripts/all-core.sh
+FRAMEWORK="$PWD/framework"
+source $FRAMEWORK/scripts/all-core.sh
 
 main "$@"
