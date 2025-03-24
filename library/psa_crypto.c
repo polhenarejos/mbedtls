@@ -3969,8 +3969,12 @@ psa_status_t mbedtls_psa_sign_hash_start(
     psa_status_t status = PSA_ERROR_CORRUPTION_DETECTED;
     size_t required_hash_length;
 
-    if (!PSA_KEY_TYPE_IS_ECC(attributes->type)) {
+    if (!PSA_KEY_TYPE_IS_ECC_KEY_PAIR(attributes->type)) {
         return PSA_ERROR_NOT_SUPPORTED;
+    }
+    psa_ecc_family_t curve = PSA_KEY_TYPE_ECC_GET_FAMILY(attributes->type);
+    if (!PSA_ECC_FAMILY_IS_WEIERSTRASS(curve)) {
+        return PSA_ERROR_INVALID_ARGUMENT;
     }
 
     if (!can_do_interruptible_sign_verify(alg)) {
@@ -4187,6 +4191,10 @@ psa_status_t mbedtls_psa_verify_hash_start(
 
     if (!PSA_KEY_TYPE_IS_ECC(attributes->type)) {
         return PSA_ERROR_NOT_SUPPORTED;
+    }
+    psa_ecc_family_t curve = PSA_KEY_TYPE_ECC_GET_FAMILY(attributes->type);
+    if (!PSA_ECC_FAMILY_IS_WEIERSTRASS(curve)) {
+        return PSA_ERROR_INVALID_ARGUMENT;
     }
 
     if (!can_do_interruptible_sign_verify(alg)) {
@@ -6308,7 +6316,7 @@ static psa_status_t psa_generate_derived_ecc_key_weierstrass_helper(
     int ret = MBEDTLS_ERR_ERROR_CORRUPTION_DETECTED;
     psa_status_t status = PSA_ERROR_CORRUPTION_DETECTED;
     size_t m;
-    size_t m_bytes;
+    size_t m_bytes = 0;
 
     mbedtls_mpi_init(&k);
     mbedtls_mpi_init(&diff_N_2);
@@ -6381,7 +6389,7 @@ cleanup:
         status = mbedtls_to_psa_error(ret);
     }
     if (status != PSA_SUCCESS) {
-        mbedtls_free(*data);
+        mbedtls_zeroize_and_free(*data, m_bytes);
         *data = NULL;
     }
     mbedtls_mpi_free(&k);
@@ -6556,7 +6564,7 @@ static psa_status_t psa_generate_derived_key_internal(
     }
 
 exit:
-    mbedtls_free(data);
+    mbedtls_zeroize_and_free(data, bytes);
     return status;
 }
 
@@ -7480,6 +7488,12 @@ static psa_status_t psa_key_derivation_input_internal(
     psa_status_t status;
     psa_algorithm_t kdf_alg = psa_key_derivation_get_kdf_alg(operation);
 
+    if (kdf_alg == PSA_ALG_NONE) {
+        /* This is a blank or aborted operation. */
+        status = PSA_ERROR_BAD_STATE;
+        goto exit;
+    }
+
     status = psa_key_derivation_check_input_type(step, key_type);
     if (status != PSA_SUCCESS) {
         goto exit;
@@ -7538,6 +7552,12 @@ static psa_status_t psa_key_derivation_input_integer_internal(
     psa_status_t status;
     psa_algorithm_t kdf_alg = psa_key_derivation_get_kdf_alg(operation);
 
+    if (kdf_alg == PSA_ALG_NONE) {
+        /* This is a blank or aborted operation. */
+        status = PSA_ERROR_BAD_STATE;
+        goto exit;
+    }
+
 #if defined(PSA_HAVE_SOFT_PBKDF2)
     if (PSA_ALG_IS_PBKDF2(kdf_alg)) {
         status = psa_pbkdf2_set_input_cost(
@@ -7551,6 +7571,7 @@ static psa_status_t psa_key_derivation_input_integer_internal(
         status = PSA_ERROR_INVALID_ARGUMENT;
     }
 
+exit:
     if (status != PSA_SUCCESS) {
         psa_key_derivation_abort(operation);
     }
@@ -9292,7 +9313,7 @@ psa_status_t psa_crypto_local_input_alloc(const uint8_t *input, size_t input_len
     return PSA_SUCCESS;
 
 error:
-    mbedtls_free(local_input->buffer);
+    mbedtls_zeroize_and_free(local_input->buffer, local_input->length);
     local_input->buffer = NULL;
     local_input->length = 0;
     return status;
@@ -9300,7 +9321,7 @@ error:
 
 void psa_crypto_local_input_free(psa_crypto_local_input_t *local_input)
 {
-    mbedtls_free(local_input->buffer);
+    mbedtls_zeroize_and_free(local_input->buffer, local_input->length);
     local_input->buffer = NULL;
     local_input->length = 0;
 }
@@ -9344,7 +9365,7 @@ psa_status_t psa_crypto_local_output_free(psa_crypto_local_output_t *local_outpu
         return status;
     }
 
-    mbedtls_free(local_output->buffer);
+    mbedtls_zeroize_and_free(local_output->buffer, local_output->length);
     local_output->buffer = NULL;
     local_output->length = 0;
 

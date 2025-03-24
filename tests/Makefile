@@ -58,6 +58,13 @@ GENERATED_FILES += ../framework/tests/include/test/test_keys.h src/test_certs.h
 # Generated files needed to (fully) run ssl-opt.sh
 .PHONY: ssl-opt
 
+opt-testcases/handshake-generated.sh: ../framework/scripts/mbedtls_framework/tls_test_case.py
+opt-testcases/handshake-generated.sh: ../framework/scripts/generate_tls_handshake_tests.py
+	echo "  Gen   $@"
+	$(PYTHON) ../framework/scripts/generate_tls_handshake_tests.py -o $@
+GENERATED_FILES += opt-testcases/handshake-generated.sh
+ssl-opt: opt-testcases/handshake-generated.sh
+
 opt-testcases/tls13-compat.sh: ../framework/scripts/generate_tls13_compat_tests.py
 	echo "  Gen   $@"
 	$(PYTHON) ../framework/scripts/generate_tls13_compat_tests.py -o $@
@@ -120,6 +127,7 @@ generated_psa_test_data: ../framework/scripts/mbedtls_framework/crypto_knowledge
 generated_psa_test_data: ../framework/scripts/mbedtls_framework/macro_collector.py
 generated_psa_test_data: ../framework/scripts/mbedtls_framework/psa_information.py
 generated_psa_test_data: ../framework/scripts/mbedtls_framework/psa_storage.py
+generated_psa_test_data: ../framework/scripts/mbedtls_framework/psa_test_case.py
 generated_psa_test_data: ../framework/scripts/mbedtls_framework/test_case.py
 generated_psa_test_data: ../framework/scripts/mbedtls_framework/test_data_generation.py
 ## The generated file only depends on the options that are present in

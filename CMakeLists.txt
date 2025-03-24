@@ -40,12 +40,12 @@ cmake_policy(SET CMP0012 NEW)
 if(TEST_CPP)
     project("Mbed TLS"
         LANGUAGES C CXX
-        VERSION 3.6.2
+        VERSION 3.6.3
     )
 else()
     project("Mbed TLS"
         LANGUAGES C
-        VERSION 3.6.2
+        VERSION 3.6.3
     )
 endif()
 
@@ -61,6 +61,7 @@ endif()
 
 # Set the project root directory.
 set(MBEDTLS_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+set(MBEDTLS_FRAMEWORK_DIR ${CMAKE_CURRENT_SOURCE_DIR}/framework)
 
 option(ENABLE_PROGRAMS "Build Mbed TLS programs." ON)
 
@@ -473,7 +474,7 @@ if(NOT DISABLE_PACKAGE_CONFIG_AND_INSTALL)
     write_basic_package_version_file(
         "cmake/MbedTLSConfigVersion.cmake"
             COMPATIBILITY SameMajorVersion
-            VERSION 3.6.2)
+            VERSION 3.6.3)
 
     install(
         FILES "${CMAKE_CURRENT_BINARY_DIR}/cmake/MbedTLSConfig.cmake"

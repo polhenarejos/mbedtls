@@ -13,7 +13,7 @@ component_test_make_shared () {
     msg "build/test: make shared" # ~ 40s
     make SHARED=1 TEST_CPP=1 all check
     ldd programs/util/strerror | grep libmbedcrypto
-    programs/test/dlopen_demo.sh
+    $FRAMEWORK/tests/programs/dlopen_demo.sh
 }
 
 component_test_cmake_shared () {
@@ -22,7 +22,7 @@ component_test_cmake_shared () {
     make
     ldd programs/util/strerror | grep libmbedcrypto
     make test
-    programs/test/dlopen_demo.sh
+    $FRAMEWORK/tests/programs/dlopen_demo.sh
 }
 
 support_test_cmake_out_of_source () {
@@ -115,7 +115,11 @@ component_test_cmake_as_package () {
     make
     ./cmake_package
     if [[ "$OSTYPE" == linux* ]]; then
-        PKG_CONFIG_PATH="${build_variant_dir}/mbedtls/pkgconfig" ${root_dir}/tests/scripts/pkgconfig.sh
+        PKG_CONFIG_PATH="${build_variant_dir}/mbedtls/pkgconfig" \
+        ${root_dir}/framework/scripts/pkgconfig.sh \
+        mbedtls mbedx509 mbedcrypto
+        # These are the EXPECTED package names. Renaming these could break
+        # consumers of pkg-config, consider carefully.
     fi
 }
 
@@ -212,4 +216,3 @@ component_build_cmake_programs_no_testing () {
 support_build_cmake_programs_no_testing () {
     support_test_cmake_out_of_source
 }
-

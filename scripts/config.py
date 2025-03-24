@@ -48,8 +48,6 @@ def realfull_adapter(_name, _value, _active):
     return True
 
 PSA_UNSUPPORTED_FEATURE = frozenset([
-    'PSA_WANT_ALG_CBC_MAC',
-    'PSA_WANT_ALG_XTS',
     'PSA_WANT_KEY_TYPE_RSA_KEY_PAIR_DERIVE',
     'PSA_WANT_KEY_TYPE_DH_KEY_PAIR_DERIVE'
 ])
@@ -59,13 +57,8 @@ PSA_DEPRECATED_FEATURE = frozenset([
     'PSA_WANT_KEY_TYPE_RSA_KEY_PAIR'
 ])
 
-PSA_UNSTABLE_FEATURE = frozenset([
-    'PSA_WANT_ECC_SECP_K1_224'
-])
-
 EXCLUDE_FROM_CRYPTO = PSA_UNSUPPORTED_FEATURE | \
-                      PSA_DEPRECATED_FEATURE | \
-                      PSA_UNSTABLE_FEATURE
+                      PSA_DEPRECATED_FEATURE
 
 # The goal of the full configuration is to have everything that can be tested
 # together. This includes deprecated or insecure options. It excludes:
@@ -236,6 +229,7 @@ def crypto_adapter(adapter):
 
 DEPRECATED = frozenset([
     'MBEDTLS_PSA_CRYPTO_SE_C',
+    'MBEDTLS_SSL_CLI_ALLOW_WEAK_CERTIFICATE_VERIFICATION_WITHOUT_HOSTNAME',
 ])
 def no_deprecated_adapter(adapter):
     """Modify an adapter to disable deprecated symbols.
@@ -293,11 +287,7 @@ class CryptoConfigFile(config_common.ConfigFile):
     # Temporary, while Mbed TLS does not just rely on the TF-PSA-Crypto
     # build system to build its crypto library. When it does, the
     # condition can just be removed.
-    _path_in_tree = ('include/psa/crypto_config.h'
-                     if not os.path.isdir(os.path.join(os.path.dirname(__file__),
-                                                       os.pardir,
-                                                       'tf-psa-crypto')) else
-                     'tf-psa-crypto/include/psa/crypto_config.h')
+    _path_in_tree = 'include/psa/crypto_config.h'
     default_path = [_path_in_tree,
                     os.path.join(os.path.dirname(__file__),
                                  os.pardir,
@@ -357,8 +347,6 @@ class CryptoConfig(config_common.Config):
 
         if name in PSA_UNSUPPORTED_FEATURE:
             raise ValueError(f'Feature is unsupported: \'{name}\'')
-        if name in PSA_UNSTABLE_FEATURE:
-            raise ValueError(f'Feature is unstable: \'{name}\'')
 
         if name not in self.settings:
             self._get_configfile().templates.append((name, '', '#define ' + name + ' '))

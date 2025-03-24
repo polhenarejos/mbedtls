@@ -33,41 +33,6 @@ class CoverageTask(outcome_analysis.CoverageTask):
                           r'.*\b(?:' + r'|'.join(words) + r')\b.*',
                           re.DOTALL)
 
-    # generate_psa_tests.py generates test cases involving cryptographic
-    # mechanisms (key types, families, algorithms) that are declared but
-    # not implemented. Until we improve the Python scripts, ignore those
-    # test cases in the analysis.
-    # https://github.com/Mbed-TLS/mbedtls/issues/9572
-    _PSA_MECHANISMS_NOT_IMPLEMENTED = [
-        r'CBC_MAC',
-        r'DETERMINISTIC_DSA',
-        r'DET_DSA',
-        r'DSA',
-        r'ECC_KEY_PAIR\(BRAINPOOL_P_R1\) (?:160|192|224|320)-bit',
-        r'ECC_KEY_PAIR\(SECP_K1\) 225-bit',
-        r'ECC_PAIR\(BP_R1\) (?:160|192|224|320)-bit',
-        r'ECC_PAIR\(SECP_K1\) 225-bit',
-        r'ECC_PUBLIC_KEY\(BRAINPOOL_P_R1\) (?:160|192|224|320)-bit',
-        r'ECC_PUBLIC_KEY\(SECP_K1\) 225-bit',
-        r'ECC_PUB\(BP_R1\) (?:160|192|224|320)-bit',
-        r'ECC_PUB\(SECP_K1\) 225-bit',
-        r'ED25519PH',
-        r'ED448PH',
-        r'PEPPER',
-        r'PURE_EDDSA',
-        r'SECP_R2',
-        r'SECT_K1',
-        r'SECT_R1',
-        r'SECT_R2',
-        r'SHAKE256_512',
-        r'SHA_512_224',
-        r'SHA_512_256',
-        r'TWISTED_EDWARDS',
-        r'XTS',
-    ]
-    PSA_MECHANISM_NOT_IMPLEMENTED_SEARCH_RE = \
-        _has_word_re(_PSA_MECHANISMS_NOT_IMPLEMENTED)
-
     IGNORED_TESTS = {
         'ssl-opt': [
             # We don't run ssl-opt.sh with Valgrind on the CI because
@@ -211,16 +176,6 @@ class CoverageTask(outcome_analysis.CoverageTask):
             # https://github.com/Mbed-TLS/mbedtls/issues/9592
             re.compile(r'.*ECDSA.*only deterministic supported'),
         ],
-        'test_suite_psa_crypto_generate_key.generated': [
-            # Ignore mechanisms that are not implemented, except
-            # for public keys for which we always test that
-            # psa_generate_key() returns PSA_ERROR_INVALID_ARGUMENT
-            # regardless of whether the specific key type is supported.
-            _has_word_re((mech
-                          for mech in _PSA_MECHANISMS_NOT_IMPLEMENTED
-                          if not mech.startswith('ECC_PUB')),
-                         exclude=r'ECC_PUB'),
-        ],
         'test_suite_psa_crypto_metadata': [
             # Algorithms declared but not supported.
             # https://github.com/Mbed-TLS/mbedtls/issues/9579
@@ -234,10 +189,6 @@ class CoverageTask(outcome_analysis.CoverageTask):
             'MAC: CBC_MAC-AES-256',
         ],
         'test_suite_psa_crypto_not_supported.generated': [
-            # It is a bug that not-supported test cases aren't getting
-            # run for never-implemented key types.
-            # https://github.com/Mbed-TLS/mbedtls/issues/7915
-            PSA_MECHANISM_NOT_IMPLEMENTED_SEARCH_RE,
             # We never test with DH key support disabled but support
             # for a DH group enabled. The dependencies of these test
             # cases don't really make sense.
@@ -251,18 +202,6 @@ class CoverageTask(outcome_analysis.CoverageTask):
             'PSA import DH_PUBLIC_KEY(RFC7919) 2048-bit group not supported',
         ],
         'test_suite_psa_crypto_op_fail.generated': [
-            # Ignore mechanisms that are not implemented, except
-            # for test cases that assume the mechanism is not supported.
-            _has_word_re(_PSA_MECHANISMS_NOT_IMPLEMENTED,
-                         exclude=(r'.*: !(?:' +
-                                  r'|'.join(_PSA_MECHANISMS_NOT_IMPLEMENTED) +
-                                  r')\b')),
-            # Incorrect dependency generation. To be fixed as part of the
-            # resolution of https://github.com/Mbed-TLS/mbedtls/issues/9167
-            # by forward-porting the commit
-            # "PSA test case generation: dependency inference class: operation fail"
-            # from https://github.com/Mbed-TLS/mbedtls/pull/9025 .
-            re.compile(r'.* with (?:DH|ECC)_(?:KEY_PAIR|PUBLIC_KEY)\(.*'),
             # We don't test this unusual, but sensible configuration.
             # https://github.com/Mbed-TLS/mbedtls/issues/9592
             re.compile(r'.*: !ECDSA but DETERMINISTIC_ECDSA with ECC_.*'),
@@ -279,17 +218,17 @@ class CoverageTask(outcome_analysis.CoverageTask):
             # differing from PSA_WANT_ALG_RSA_PSS.
             # https://github.com/Mbed-TLS/mbedtls/issues/9578
             re.compile(r'PSA sign RSA_PSS_ANY_SALT.*!(?:MD|RIPEMD|SHA).*'),
+            # We don't test with ECDH disabled but the key type enabled.
+            # https://github.com/Mbed-TLS/TF-PSA-Crypto/issues/161
+            re.compile(r'PSA key_agreement.* !ECDH with ECC_KEY_PAIR\(.*'),
+            # We don't test with FFDH disabled but the key type enabled.
+            # https://github.com/Mbed-TLS/TF-PSA-Crypto/issues/160
+            re.compile(r'PSA key_agreement.* !FFDH with DH_KEY_PAIR\(.*'),
         ],
         'test_suite_psa_crypto_op_fail.misc': [
             # We don't test this unusual, but sensible configuration.
             # https://github.com/Mbed-TLS/mbedtls/issues/9592
             'PSA sign DETERMINISTIC_ECDSA(SHA_256): !ECDSA but DETERMINISTIC_ECDSA with ECC_KEY_PAIR(SECP_R1)', #pylint: disable=line-too-long
-        ],
-        'test_suite_psa_crypto_storage_format.current': [
-            PSA_MECHANISM_NOT_IMPLEMENTED_SEARCH_RE,
-        ],
-        'test_suite_psa_crypto_storage_format.v0': [
-            PSA_MECHANISM_NOT_IMPLEMENTED_SEARCH_RE,
         ],
         'tls13-misc': [
             # Disabled due to OpenSSL bug.
@@ -473,7 +412,7 @@ class DriverVSReference_ecp_light_only(outcome_analysis.DriverVSReference):
         ],
         'test_suite_ssl': [
             # This deprecated function is only present when ECP_C is On.
-            'Test configuration of groups for DHE through mbedtls_ssl_conf_curves()',
+            'Test configuration of EC groups through mbedtls_ssl_conf_curves()',
         ],
     }
 
@@ -513,7 +452,7 @@ class DriverVSReference_no_ecp_at_all(outcome_analysis.DriverVSReference):
         ],
         # See ecp_light_only
         'test_suite_ssl': [
-            'Test configuration of groups for DHE through mbedtls_ssl_conf_curves()',
+            'Test configuration of EC groups through mbedtls_ssl_conf_curves()',
         ],
     }
 
@@ -560,7 +499,7 @@ class DriverVSReference_ecc_no_bignum(outcome_analysis.DriverVSReference):
         ],
         # See ecp_light_only
         'test_suite_ssl': [
-            'Test configuration of groups for DHE through mbedtls_ssl_conf_curves()',
+            'Test configuration of EC groups through mbedtls_ssl_conf_curves()',
         ],
     }
 
@@ -615,7 +554,7 @@ class DriverVSReference_ecc_ffdh_no_bignum(outcome_analysis.DriverVSReference):
         ],
         # See ecp_light_only
         'test_suite_ssl': [
-            'Test configuration of groups for DHE through mbedtls_ssl_conf_curves()',
+            'Test configuration of EC groups through mbedtls_ssl_conf_curves()',
         ],
     }
 

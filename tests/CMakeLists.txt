@@ -124,6 +124,24 @@ if(GEN_FILES)
             # change too often in ways that don't affect the result
             # ((un)commenting some options).
     )
+
+    add_custom_command(
+        OUTPUT
+            ${CMAKE_CURRENT_SOURCE_DIR}/opt-testcases/handshake-generated.sh
+        WORKING_DIRECTORY
+            ${CMAKE_CURRENT_SOURCE_DIR}/..
+        COMMAND
+            "${MBEDTLS_PYTHON_EXECUTABLE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../framework/scripts/generate_tls_handshake_tests.py"
+        DEPENDS
+            ${CMAKE_CURRENT_SOURCE_DIR}/../framework/scripts/mbedtls_framework/tls_test_case.py
+            ${CMAKE_CURRENT_SOURCE_DIR}/../framework/scripts/generate_tls_handshake_tests.py
+    )
+    add_custom_target(handshake-generated.sh
+        DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/opt-testcases/handshake-generated.sh)
+    set_target_properties(handshake-generated.sh PROPERTIES EXCLUDE_FROM_ALL NO)
+    add_dependencies(${ssl_opt_target} handshake-generated.sh)
+
     add_custom_command(
         OUTPUT
             ${ecp_generated_data_files}
@@ -156,6 +174,7 @@ if(GEN_FILES)
             ${CMAKE_CURRENT_SOURCE_DIR}/../framework/scripts/mbedtls_framework/macro_collector.py
             ${CMAKE_CURRENT_SOURCE_DIR}/../framework/scripts/mbedtls_framework/psa_information.py
             ${CMAKE_CURRENT_SOURCE_DIR}/../framework/scripts/mbedtls_framework/psa_storage.py
+            ${CMAKE_CURRENT_SOURCE_DIR}/../framework/scripts/mbedtls_framework/psa_test_case.py
             ${CMAKE_CURRENT_SOURCE_DIR}/../framework/scripts/mbedtls_framework/test_case.py
             ${CMAKE_CURRENT_SOURCE_DIR}/../framework/scripts/mbedtls_framework/test_data_generation.py
             ${CMAKE_CURRENT_SOURCE_DIR}/../include/psa/crypto_config.h
