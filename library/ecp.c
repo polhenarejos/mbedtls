@@ -4330,6 +4330,11 @@ int mbedtls_ecp_keypair_calc_public(mbedtls_ecp_keypair *key,
                                     int (*f_rng)(void *, unsigned char *, size_t),
                                     void *p_rng)
 {
+#if defined(MBEDTLS_ECP_EDWARDS_ENABLED)
+    if (mbedtls_ecp_get_type(&key->grp) == MBEDTLS_ECP_TYPE_EDWARDS) {
+        return mbedtls_ecp_point_edwards(&key->grp, &key->Q, &key->d, f_rng, p_rng);
+    }
+#endif
     return mbedtls_ecp_mul(&key->grp, &key->Q, &key->d, &key->grp.G,
                            f_rng, p_rng);
 }
