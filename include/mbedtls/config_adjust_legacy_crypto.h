@@ -501,6 +501,12 @@
 #if defined(MBEDTLS_ECP_DP_SECP192R1_ENABLED) || defined(PSA_WANT_ECC_SECP_R1_192)
 #define MBEDTLS_ECP_HAVE_SECP192R1
 #endif
+#if defined(MBEDTLS_ECP_DP_ED25519_ENABLED) || defined(PSA_WANT_ECC_ED25519)
+#define MBEDTLS_ECP_HAVE_ED25519
+#endif
+#if defined(MBEDTLS_ECP_DP_ED448_ENABLED) || defined(PSA_WANT_ECC_ED448)
+#define MBEDTLS_ECP_HAVE_ED448
+#endif
 
 /* Helper symbol to state that the PK module has support for EC keys. This
  * can either be provided through the legacy ECP solution or through the

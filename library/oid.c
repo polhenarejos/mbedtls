@@ -645,6 +645,18 @@ static const oid_ecp_grp_algid_t oid_ecp_grp_algid[] =
         MBEDTLS_ECP_DP_CURVE448,
     },
 #endif /* MBEDTLS_ECP_HAVE_CURVE448 */
+#if defined(MBEDTLS_ECP_HAVE_ED25519)
+    {
+        OID_DESCRIPTOR(MBEDTLS_OID_ED25519,              "Ed25519",        "Ed25519"),
+        MBEDTLS_ECP_DP_ED25519,
+    },
+#endif /* MBEDTLS_ECP_HAVE_ED25519 */
+#if defined(MBEDTLS_ECP_HAVE_ED448)
+    {
+        OID_DESCRIPTOR(MBEDTLS_OID_ED448,                "Ed448",          "Ed448"),
+        MBEDTLS_ECP_DP_ED448,
+    },
+#endif /* MBEDTLS_ECP_HAVE_ED448 */
     {
         NULL_OID_DESCRIPTOR,
         MBEDTLS_ECP_DP_NONE,
