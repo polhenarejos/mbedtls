@@ -464,6 +464,18 @@ static const oid_sig_alg_t oid_sig_alg[] =
         MBEDTLS_MD_NONE,     MBEDTLS_PK_RSASSA_PSS,
     },
 #endif /* MBEDTLS_RSA_C */
+#if defined(MBEDTLS_EDDSA_C) && defined(MBEDTLS_ECP_HAVE_ED25519)
+    {
+        OID_DESCRIPTOR(MBEDTLS_OID_ED25519,             "Ed25519",               "Ed25519"),
+        MBEDTLS_MD_NONE,     MBEDTLS_PK_ECKEY,
+    },
+#endif /* MBEDTLS_EDDSA_C && MBEDTLS_ECP_HAVE_ED25519 */
+#if defined(MBEDTLS_EDDSA_C) && defined(MBEDTLS_ECP_HAVE_ED448)
+    {
+        OID_DESCRIPTOR(MBEDTLS_OID_ED448,              "Ed448",                "Ed448"),
+        MBEDTLS_MD_NONE,     MBEDTLS_PK_ECKEY,
+    },
+#endif /* MBEDTLS_EDDSA_C && MBEDTLS_ECP_HAVE_ED448 */
     {
         NULL_OID_DESCRIPTOR,
         MBEDTLS_MD_NONE, MBEDTLS_PK_NONE,

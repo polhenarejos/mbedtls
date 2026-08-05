@@ -29,6 +29,10 @@
 
 #include <string.h>
 
+#if defined(MBEDTLS_EDDSA_C)
+#include "mbedtls/eddsa.h"
+#endif
+
 #if defined(MBEDTLS_PEM_PARSE_C)
 #include "mbedtls/pem.h"
 #endif
@@ -105,6 +109,15 @@ const mbedtls_x509_crt_profile mbedtls_x509_crt_profile_default =
     MBEDTLS_X509_ID_FLAG(MBEDTLS_ECP_DP_BP256R1) |
     MBEDTLS_X509_ID_FLAG(MBEDTLS_ECP_DP_BP384R1) |
     MBEDTLS_X509_ID_FLAG(MBEDTLS_ECP_DP_BP512R1) |
+#if defined(MBEDTLS_ECP_HAVE_CURVE448)
+    MBEDTLS_X509_ID_FLAG(MBEDTLS_ECP_DP_CURVE448) |
+#endif
+#if defined(MBEDTLS_ECP_HAVE_ED25519)
+    MBEDTLS_X509_ID_FLAG(MBEDTLS_ECP_DP_ED25519) |
+#endif
+#if defined(MBEDTLS_ECP_HAVE_ED448)
+    MBEDTLS_X509_ID_FLAG(MBEDTLS_ECP_DP_ED448) |
+#endif
     0,
 #else /* MBEDTLS_PK_HAVE_ECC_KEYS */
     0,
@@ -2123,6 +2136,25 @@ static int x509_crt_verifycrl(mbedtls_x509_crt *crt, mbedtls_x509_crt *ca,
 }
 #endif /* MBEDTLS_X509_CRL_PARSE_C */
 
+#if defined(MBEDTLS_EDDSA_C) && (defined(MBEDTLS_ECP_HAVE_ED25519) || defined(MBEDTLS_ECP_HAVE_ED448))
+static mbedtls_ecp_group_id x509_crt_get_eddsa_group(const mbedtls_x509_crt *crt)
+{
+#if defined(MBEDTLS_ECP_HAVE_ED25519)
+    if (crt->sig_oid.len == sizeof(MBEDTLS_OID_ED25519) - 1 &&
+        memcmp(crt->sig_oid.p, MBEDTLS_OID_ED25519, sizeof(MBEDTLS_OID_ED25519) - 1) == 0) {
+        return MBEDTLS_ECP_DP_ED25519;
+    }
+#endif
+#if defined(MBEDTLS_ECP_HAVE_ED448)
+    if (crt->sig_oid.len == sizeof(MBEDTLS_OID_ED448) - 1 &&
+        memcmp(crt->sig_oid.p, MBEDTLS_OID_ED448, sizeof(MBEDTLS_OID_ED448) - 1) == 0) {
+        return MBEDTLS_ECP_DP_ED448;
+    }
+#endif
+    return MBEDTLS_ECP_DP_NONE;
+}
+#endif
+
 /*
  * Check the signature of a certificate by its parent
  */
@@ -2130,6 +2162,19 @@ static int x509_crt_check_signature(const mbedtls_x509_crt *child,
                                     mbedtls_x509_crt *parent,
                                     mbedtls_x509_crt_restart_ctx *rs_ctx)
 {
+#if defined(MBEDTLS_EDDSA_C) && (defined(MBEDTLS_ECP_HAVE_ED25519) || defined(MBEDTLS_ECP_HAVE_ED448))
+    mbedtls_ecp_group_id group_id = x509_crt_get_eddsa_group(child);
+
+    if (group_id != MBEDTLS_ECP_DP_NONE) {
+        mbedtls_ecp_keypair *parent_key = mbedtls_pk_ec(parent->pk);
+
+        if (parent_key == NULL || parent_key->grp.id != group_id) {
+            return MBEDTLS_ERR_PK_TYPE_MISMATCH;
+        }
+
+        return mbedtls_eddsa_read_signature(parent_key, child->tbs.p, child->tbs.len, child->sig.p, child->sig.len, MBEDTLS_EDDSA_PURE, NULL, 0);
+    }
+#endif
     size_t hash_len;
     unsigned char hash[MBEDTLS_MD_MAX_SIZE];
 #if !defined(MBEDTLS_USE_PSA_CRYPTO)
@@ -2584,7 +2629,12 @@ static int x509_crt_verify_chain(
         }
 
         /* Check signature algorithm: MD & PK algs */
+#if defined(MBEDTLS_EDDSA_C) && (defined(MBEDTLS_ECP_HAVE_ED25519) || defined(MBEDTLS_ECP_HAVE_ED448))
+        if (x509_crt_get_eddsa_group(child) == MBEDTLS_ECP_DP_NONE &&
+            mbedtls_x509_profile_check_md_alg(profile, child->sig_md) != 0) {
+#else
         if (mbedtls_x509_profile_check_md_alg(profile, child->sig_md) != 0) {
+#endif
             *flags |= MBEDTLS_X509_BADCERT_BAD_MD;
         }
 
